@@ -33,11 +33,11 @@ class OffboardControl(Node):
 
         self.zed_sub = self.create_subscription(PoseStamped, '/chotto/zed_node/pose', self.zed_callback, 10)
         # self.zed_sub = self.create_subscription(PoseStamped, '/mini_zed_wrapper/pose', self.zed_callback, 10)
-        self.NED_pose = VehicleOdometry()
-        self.NED_pose.pose_frame = 2
+        self.FRD_pose = VehicleOdometry()
+        self.FRD_pose.pose_frame = 2
         """
             DEPRECATED with new message (and version/pkgs)
-            self.NED_pose.header.frame_id = 'map'
+            self.FRD_pose.header.frame_id = 'map'
         """
 
         # Initialize variables
@@ -48,19 +48,21 @@ class OffboardControl(Node):
         self.timer = self.create_timer(1/50, self.timer_callback)
 
     def zed_callback(self, msg):
-        # self.NED_pose.timestamp = msg.header.stamp.sec*100
-        # convert the vicon data to NED frame
-        self.NED_pose.position = [msg.pose.position.x, -msg.pose.position.y, -msg.pose.position.z]
+        # self.FRD_pose.timestamp = msg.header.stamp.sec*100
+        # convert the vicon data to FRD frame
+
+        #self.FRD_pose.position = [msg.pose.position.x, -msg.pose.position.y, -msg.pose.position.z] from FLU to FRD
+        self.FRD_pose.position = [msg.pose.position.y, msg.pose.position.x, -msg.pose.position.z] # from RFU to FRD
         # convert vicon quaternion to euler angles
         roll, pitch, yaw = R.from_quat([msg.pose.orientation.x, \
                                         msg.pose.orientation.y, \
                                         msg.pose.orientation.z, \
                                         msg.pose.orientation.w]).as_euler('xyz')
-        # yaw = yaw - np.pi/2 # subtract 90 degrees offset to yaw
+        yaw_FRD = -yaw # from RFU to FRD
         # convert euler angles to quaternion
-        qx, qy, qz, qw = R.from_euler('xyz', [roll, pitch, -yaw]).as_quat()
-        self.NED_pose.q = [qw, qx, qy, qz]
-        # self.NED_pose.pose.covariance = np.eye(6, dtype=np.float32).reshape((1,36)).tolist()[0]
+        qx, qy, qz, qw = R.from_euler('xyz', [roll, pitch, yaw_FRD]).as_quat()
+        self.FRD_pose.q = [qw, qx, qy, qz]
+        # self.FRD_pose.pose.covariance = np.eye(6, dtype=np.float32).reshape((1,36)).tolist()[0]
     
     def publish_VIO_data(self):
         """Publish VIO data to the FMU."""
@@ -68,7 +70,7 @@ class OffboardControl(Node):
         # msg.position = [x, y, z]
         # msg.q = [1.0, 0.0, 0.0, 0.0]
         #frame FRD
-        self.VIO_publisher.publish(self.NED_pose)
+        self.VIO_publisher.publish(self.FRD_pose)
         # self.get_logger().info('VIO data published')
 
     def vehicle_local_position_callback(self, vehicle_local_position):
