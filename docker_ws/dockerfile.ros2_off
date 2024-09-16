@@ -1,0 +1,16 @@
+from ros:humble
+
+SHELL ["/bin/bash", "-c"]
+
+# build ROS2 workspace
+WORKDIR /root
+RUN mkdir -p ~/ws_sensor_combined/src/
+WORKDIR /root/ws_sensor_combined/src/
+RUN git clone https://github.com/PX4/px4_msgs.git -b release/1.14
+RUN git clone https://github.com/PX4/px4_ros_com.git
+WORKDIR /root/ws_sensor_combined/
+RUN source /opt/ros/humble/setup.bash && colcon build --symlink-install
+
+RUN apt update && apt install -y python3-pip && pip3 install scipy
+
+WORKDIR /root/ros2_ws/src
