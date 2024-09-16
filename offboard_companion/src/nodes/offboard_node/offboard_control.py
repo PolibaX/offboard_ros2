@@ -4,8 +4,12 @@ import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
 from px4_msgs.msg import OffboardControlMode, TrajectorySetpoint, VehicleCommand, VehicleLocalPosition, VehicleStatus
+from geometry_msgs.msg import PoseStamped
 
 from std_srvs.srv import SetBool
+from polibax_interfaces.action import TakeOff
+
+from scipy.spatial.transform import Rotation as R
 
 class OffboardControl(Node):
     """Node for controlling a vehicle in offboard mode."""
@@ -30,8 +34,8 @@ class OffboardControl(Node):
             VehicleCommand, '/chotto/fmu/in/vehicle_command', qos_profile)
 
         # Create subscribers
-        # self.vehicle_local_position_subscriber = self.create_subscription(
-        #     VehicleLocalPosition, '/chotto/fmu/out/vehicle_local_position', self.vehicle_local_position_callback, qos_profile)
+        self.vehicle_local_position_subscriber = self.create_subscription(
+            VehicleLocalPosition, '/chotto/fmu/out/vehicle_local_position', self.vehicle_local_position_callback, qos_profile)
         self.vehicle_status_subscriber = self.create_subscription(
             VehicleStatus, '/chotto/fmu/out/vehicle_status', self.vehicle_status_callback, qos_profile)
 
@@ -39,32 +43,56 @@ class OffboardControl(Node):
         self.offboard_setpoint_counter = 0
         self.vehicle_local_position = VehicleLocalPosition()
         self.vehicle_status = VehicleStatus()
-        self.takeoff_height = -0.5
+        self.target_x = 0.0
+        self.target_y = 0.0
+        self.target_z = -0.
+        self.target_yaw = 0.0
 
-        # Server to wait for start mission command
-        self.mission_started = True
-        self.start_mission_srv = self.create_service(SetBool, 'start_mission', self.start_mission_callback)
+        # define subscriber for target position
+        self.target_pose_subscriber = self.create_subscription(
+            PoseStamped, '/chotto/offboard/pose_target', self.target_pose_callback, qos_profile)
+
+        self.target_error_publisher = self.create_publisher(
+            PoseStamped, '/chotto/offboard/pose_error', qos_profile)
 
         # Create a timer to publish control commands
         self.timer = self.create_timer(0.1, self.timer_callback)
         self.timer_status = self.create_timer(0.5, self.timer_status_callback)
 
-    def start_mission_callback(self, request, response):
-        """Callback function for start mission service."""
-        if request.data:
-            self.mission_started = True
-            response.success = True
-            response.message = 'Mission Set'
-            self.get_logger().info('Mission Set')
-        else:
-            response.success = False
-            response.message = 'Mission Reset'
-            self.get_logger().info('Mission Reset')
+        self.srv_ = self.create_service(SetBool, 'offboard_ready', self.am_ready_callback)
+
+    def am_ready_callback(self, request, response):
+        response.success = True
+        # response.message = 'I am ready'
         return response
 
-    # def vehicle_local_position_callback(self, vehicle_local_position):
-    #     """Callback function for vehicle_local_position topic subscriber."""
-    #     self.vehicle_local_position = vehicle_local_position
+    def publish_target_error(self):
+        """Publish the error between the target and the current position."""
+        msg = PoseStamped()
+        msg.pose.position.x = self.target_x - self.vehicle_local_position.x
+        msg.pose.position.y = self.target_y - self.vehicle_local_position.y
+        msg.pose.position.z = self.target_z - self.vehicle_local_position.z
+        self.target_error_publisher.publish(msg)
+
+    def target_pose_callback(self, msg):
+        self.target_x = msg.pose.position.x
+        self.target_y = msg.pose.position.y
+        self.target_z = msg.pose.position.z
+        self.target_yaw = R.from_quat([
+                msg.pose.orientation.x, 
+                msg.pose.orientation.y, 
+                msg.pose.orientation.z, 
+                msg.pose.orientation.w
+            ]).as_euler('xyz')[2]
+        # q_ = R.from_euler('xyz', [0, 0, yaw]).as_quat()
+        # self.target_qx = q_[0]
+        # self.target_qy = q_[1]
+        # self.target_qz = q_[2]
+        # self.target_qw = q_[3]
+
+    def vehicle_local_position_callback(self, vehicle_local_position):
+        """Callback function for vehicle_local_position topic subscriber."""
+        self.vehicle_local_position = vehicle_local_position
 
     def vehicle_status_callback(self, vehicle_status):
         """Callback function for vehicle_status topic subscriber."""
@@ -108,38 +136,22 @@ class OffboardControl(Node):
         msg.timestamp = int(self.get_clock().now().nanoseconds / 1000)
         self.offboard_control_mode_publisher.publish(msg)
 
-    def publish_position_setpoint(self, x: float, y: float, z: float):
+    def publish_position_setpoint(self):
         """Publish the trajectory setpoint."""
         msg = TrajectorySetpoint()
-        msg.position = [x, y, z]
+        msg.position = [
+            self.target_x, self.target_y, self.target_z
+        ]
         # msg.yaw = 1.57079  # (90 degree)
-        msg.yaw = 0.  # (90 degree)
+        msg.yaw = self.target_yaw
         msg.timestamp = int(self.get_clock().now().nanoseconds / 1000)
         self.trajectory_setpoint_publisher.publish(msg)
         self.get_logger().info(f"Publishing position setpoints {[x, y, z]}")
 
-    def publish_vehicle_command(self, command, **params) -> None:
-        """Publish a vehicle command."""
-        msg = VehicleCommand()
-        msg.command = command
-        msg.param1 = params.get("param1", 0.0)
-        msg.param2 = params.get("param2", 0.0)
-        msg.param3 = params.get("param3", 0.0)
-        msg.param4 = params.get("param4", 0.0)
-        msg.param5 = params.get("param5", 0.0)
-        msg.param6 = params.get("param6", 0.0)
-        msg.param7 = params.get("param7", 0.0)
-        msg.target_system = 1
-        msg.target_component = 1
-        msg.source_system = 1
-        msg.source_component = 1
-        msg.from_external = True
-        msg.timestamp = int(self.get_clock().now().nanoseconds / 1000)
-        self.vehicle_command_publisher.publish(msg)
-
     def timer_callback(self) -> None:
         """Callback function for the timer."""
-        if self.mission_started:
+        do_arm = self.get_parameter('/chotto_puppet/arm').get_parameter_value().bool_value
+        if do_arm:
             self.publish_offboard_control_heartbeat_signal()
 
             if self.offboard_setpoint_counter == 10:
@@ -148,14 +160,14 @@ class OffboardControl(Node):
 
             # if self.vehicle_local_position.z > self.takeoff_height and self.vehicle_status.nav_state == VehicleStatus.NAVIGATION_STATE_OFFBOARD:
             if self.vehicle_status.nav_state == VehicleStatus.NAVIGATION_STATE_OFFBOARD:
-                self.publish_position_setpoint(0.0, 0.0, self.takeoff_height)
+                self.publish_position_setpoint()
+                self.publish_target_error()
 
-            # elif self.vehicle_local_position.z <= self.takeoff_height:
-            #     self.land()
-            #     exit(0)
 
             if self.offboard_setpoint_counter < 11:
                 self.offboard_setpoint_counter += 1
+        elif self.vehicle_status.nav_state == VehicleStatus.NAVIGATION_STATE_AUTO_LAND
+            self.land()
 
 
 def main(args=None) -> None:
