@@ -4,9 +4,10 @@ import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
 from px4_msgs.msg import OffboardControlMode, VehicleCommand, VehicleLocalPosition, VehicleStatus, VehicleOdometry
-from geometry_msgs.msg import PoseArray
+from geometry_msgs.msg import PoseStamped
 from scipy.spatial.transform import Rotation as R
 import numpy as np
+
 
 class OffboardControl(Node):
     """Node to send VIO data to the FMU."""
@@ -19,54 +20,56 @@ class OffboardControl(Node):
             reliability=ReliabilityPolicy.BEST_EFFORT,
             durability=DurabilityPolicy.TRANSIENT_LOCAL,
             history=HistoryPolicy.KEEP_LAST,
-            depth=2
+            depth=1
         )
 
         # Create publishers
         self.VIO_publisher = self.create_publisher(
-            VehicleOdometry, '/fmu/in/vehicle_visual_odometry', qos_profile)
+            VehicleOdometry, '/chotto/fmu/in/vehicle_visual_odometry', qos_profile)
          
 
         self.vehicle_status_subscriber = self.create_subscription(
-            VehicleStatus, '/fmu/out/vehicle_status', self.vehicle_status_callback, qos_profile)
+            VehicleStatus, '/chotto/fmu/out/vehicle_status', self.vehicle_status_callback, qos_profile)
+
+        self.zed_sub = self.create_subscription(PoseStamped, '/chotto/zed_node/pose', self.zed_callback, 10)
+        # self.zed_sub = self.create_subscription(PoseStamped, '/mini_zed_wrapper/pose', self.zed_callback, 10)
+        self.NED_pose = VehicleOdometry()
+        self.NED_pose.pose_frame = 2
+        """
+            DEPRECATED with new message (and version/pkgs)
+            self.NED_pose.header.frame_id = 'map'
+        """
 
         # Initialize variables
         self.vehicle_local_position = VehicleLocalPosition()
         self.vehicle_status = VehicleStatus()
 
-        self.pose_subscriber = self.create_subscription(PoseArray, '/gazebo/model/state', self.pose_callback, 10)
-        self.vehicle_pose = VehicleOdometry()
-        self.vehicle_pose.pose_frame = 2
-
         # Create a timer to publish VIO data (VIO=Visual Inertial Odometry)
         self.timer = self.create_timer(1/50, self.timer_callback)
-    
-    def pose_callback(self, pose_array):
-        """Callback function for pose_array topic subscriber."""
-        # Get the position of the drone
-        x = pose_array.poses[1].position.x
-        y = pose_array.poses[1].position.y
-        z = pose_array.poses[1].position.z
-        qx = pose_array.poses[1].orientation.x
-        qy = pose_array.poses[1].orientation.y
-        qz = pose_array.poses[1].orientation.z
-        qw = pose_array.poses[1].orientation.w
-        roll, pitch, yaw = R.from_quat([qx,qy,qz,qw]).as_euler('xyz')
-        # yaw = yaw - np.pi # subtract 90 degrees offset to yaw        # convert euler angles to quaternion
-        qx, qy, qz, qw = R.from_euler('xyz', [roll, pitch, -yaw]).as_quat()
-        self.vehicle_pose.position = [x, -y, -z]
-        self.vehicle_pose.q = [qw, qx, qy, qz]
-        
 
-    def publish_VIO_data(self, x, y, z):
+    def zed_callback(self, msg):
+        # self.NED_pose.timestamp = msg.header.stamp.sec*100
+        # convert the vicon data to NED frame
+        self.NED_pose.position = [msg.pose.position.x, -msg.pose.position.y, -msg.pose.position.z]
+        # convert vicon quaternion to euler angles
+        roll, pitch, yaw = R.from_quat([msg.pose.orientation.x, \
+                                        msg.pose.orientation.y, \
+                                        msg.pose.orientation.z, \
+                                        msg.pose.orientation.w]).as_euler('xyz')
+        # yaw = yaw - np.pi/2 # subtract 90 degrees offset to yaw
+        # convert euler angles to quaternion
+        qx, qy, qz, qw = R.from_euler('xyz', [roll, pitch, -yaw]).as_quat()
+        self.NED_pose.q = [qw, qx, qy, qz]
+        # self.NED_pose.pose.covariance = np.eye(6, dtype=np.float32).reshape((1,36)).tolist()[0]
+    
+    def publish_VIO_data(self):
         """Publish VIO data to the FMU."""
         # msg = VehicleOdometry()
         # msg.position = [x, y, z]
-        # msg.q = [1.0, -0.0, 0.0, 0.0]
-        # #frame FRD
-        # msg.pose_frame = 2
-        self.VIO_publisher.publish(self.vehicle_pose)
-        self.get_logger().info('VIO data published')
+        # msg.q = [1.0, 0.0, 0.0, 0.0]
+        #frame FRD
+        self.VIO_publisher.publish(self.NED_pose)
+        # self.get_logger().info('VIO data published')
 
     def vehicle_local_position_callback(self, vehicle_local_position):
         """Callback function for vehicle_local_position topic subscriber."""
@@ -78,9 +81,8 @@ class OffboardControl(Node):
 
     def timer_callback(self) -> None:
         """Callback function for the timer."""
-
         # Publish VIO data
-        self.publish_VIO_data(9.0, 7.0, 0.0)
+        self.publish_VIO_data()
         
 
 

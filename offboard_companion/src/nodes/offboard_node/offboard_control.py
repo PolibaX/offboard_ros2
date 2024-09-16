@@ -5,6 +5,7 @@ from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
 from px4_msgs.msg import OffboardControlMode, TrajectorySetpoint, VehicleCommand, VehicleLocalPosition, VehicleStatus
 
+from std_srvs.srv import SetBool
 
 class OffboardControl(Node):
     """Node for controlling a vehicle in offboard mode."""
@@ -22,29 +23,56 @@ class OffboardControl(Node):
 
         # Create publishers
         self.offboard_control_mode_publisher = self.create_publisher(
-            OffboardControlMode, '/fmu/in/offboard_control_mode', qos_profile)
+            OffboardControlMode, '/chotto/fmu/in/offboard_control_mode', qos_profile)
         self.trajectory_setpoint_publisher = self.create_publisher(
-            TrajectorySetpoint, '/fmu/in/trajectory_setpoint', qos_profile)
+            TrajectorySetpoint, '/chotto/fmu/in/trajectory_setpoint', qos_profile)
         self.vehicle_command_publisher = self.create_publisher(
-            VehicleCommand, '/fmu/in/vehicle_command', qos_profile)
+            VehicleCommand, '/chotto/fmu/in/vehicle_command', qos_profile)
 
         # Create subscribers
-
+        # self.vehicle_local_position_subscriber = self.create_subscription(
+        #     VehicleLocalPosition, '/chotto/fmu/out/vehicle_local_position', self.vehicle_local_position_callback, qos_profile)
         self.vehicle_status_subscriber = self.create_subscription(
-            VehicleStatus, '/fmu/out/vehicle_status', self.vehicle_status_callback, qos_profile)
+            VehicleStatus, '/chotto/fmu/out/vehicle_status', self.vehicle_status_callback, qos_profile)
 
         # Initialize variables
         self.offboard_setpoint_counter = 0
+        self.vehicle_local_position = VehicleLocalPosition()
         self.vehicle_status = VehicleStatus()
-        self.takeoff_height = -5.0
+        self.takeoff_height = -0.5
+
+        # Server to wait for start mission command
+        self.mission_started = True
+        self.start_mission_srv = self.create_service(SetBool, 'start_mission', self.start_mission_callback)
 
         # Create a timer to publish control commands
         self.timer = self.create_timer(0.1, self.timer_callback)
+        self.timer_status = self.create_timer(0.5, self.timer_status_callback)
 
+    def start_mission_callback(self, request, response):
+        """Callback function for start mission service."""
+        if request.data:
+            self.mission_started = True
+            response.success = True
+            response.message = 'Mission Set'
+            self.get_logger().info('Mission Set')
+        else:
+            response.success = False
+            response.message = 'Mission Reset'
+            self.get_logger().info('Mission Reset')
+        return response
+
+    # def vehicle_local_position_callback(self, vehicle_local_position):
+    #     """Callback function for vehicle_local_position topic subscriber."""
+    #     self.vehicle_local_position = vehicle_local_position
 
     def vehicle_status_callback(self, vehicle_status):
         """Callback function for vehicle_status topic subscriber."""
         self.vehicle_status = vehicle_status
+
+    def timer_status_callback(self):
+        """Callback function for the timer."""
+        self.get_logger().info(f"Veichle State: {self.vehicle_status.arming_state}")
 
     def arm(self):
         """Send an arm command to the vehicle."""
@@ -67,7 +95,7 @@ class OffboardControl(Node):
     def land(self):
         """Switch to land mode."""
         self.publish_vehicle_command(VehicleCommand.VEHICLE_CMD_NAV_LAND)
-        self.get_logger().info("Switching to land mode")
+        self.get_logger().infovehicle_command_publisher("Switching to land mode")
 
     def publish_offboard_control_heartbeat_signal(self):
         """Publish the offboard control mode."""
@@ -84,7 +112,8 @@ class OffboardControl(Node):
         """Publish the trajectory setpoint."""
         msg = TrajectorySetpoint()
         msg.position = [x, y, z]
-        msg.yaw = 3.14/2  # (90 degree)
+        # msg.yaw = 1.57079  # (90 degree)
+        msg.yaw = 0.  # (90 degree)
         msg.timestamp = int(self.get_clock().now().nanoseconds / 1000)
         self.trajectory_setpoint_publisher.publish(msg)
         self.get_logger().info(f"Publishing position setpoints {[x, y, z]}")
@@ -110,18 +139,23 @@ class OffboardControl(Node):
 
     def timer_callback(self) -> None:
         """Callback function for the timer."""
-        self.publish_offboard_control_heartbeat_signal()
+        if self.mission_started:
+            self.publish_offboard_control_heartbeat_signal()
 
-        if self.offboard_setpoint_counter == 10:
-            self.engage_offboard_mode()
-            self.arm()
+            if self.offboard_setpoint_counter == 10:
+                self.engage_offboard_mode()
+                self.arm()
 
-        if self.vehicle_status.nav_state == VehicleStatus.NAVIGATION_STATE_OFFBOARD:
-            self.publish_position_setpoint(5., 5., self.takeoff_height)
+            # if self.vehicle_local_position.z > self.takeoff_height and self.vehicle_status.nav_state == VehicleStatus.NAVIGATION_STATE_OFFBOARD:
+            if self.vehicle_status.nav_state == VehicleStatus.NAVIGATION_STATE_OFFBOARD:
+                self.publish_position_setpoint(0.0, 0.0, self.takeoff_height)
 
-    
-        if self.offboard_setpoint_counter < 11:
-            self.offboard_setpoint_counter += 1
+            # elif self.vehicle_local_position.z <= self.takeoff_height:
+            #     self.land()
+            #     exit(0)
+
+            if self.offboard_setpoint_counter < 11:
+                self.offboard_setpoint_counter += 1
 
 
 def main(args=None) -> None:
