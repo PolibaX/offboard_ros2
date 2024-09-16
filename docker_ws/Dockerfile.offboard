@@ -30,4 +30,4 @@ RUN apt install python3-pip -y
 RUN pip3 install --upgrade scipy
 
 
-ENV ROS_DOMAIN_ID=33
+# ENV ROS_DOMAIN_ID=33 # USE ONLY FOR SIMULATION
