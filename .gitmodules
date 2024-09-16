@@ -1,0 +1,3 @@
+[submodule "ros-interfaces"]
+	path = ros-interfaces
+	url = git@github.com:PolibaX/ros-interfaces.git
