@@ -7,7 +7,7 @@ from px4_msgs.msg import OffboardControlMode, TrajectorySetpoint, VehicleCommand
 from geometry_msgs.msg import PoseStamped
 
 from std_srvs.srv import SetBool
-from polibax_interfaces.action import TakeOff
+from polibax_interfaces.srv import Takeoff, Land
 
 from scipy.spatial.transform import Rotation as R
 
@@ -15,7 +15,7 @@ class OffboardControl(Node):
     """Node for controlling a vehicle in offboard mode."""
 
     def __init__(self) -> None:
-        super().__init__('offboard_control_takeoff_and_land')
+        super().__init__('offboard_control')
 
         # Configure QoS profile for publishing and subscribing
         qos_profile = QoSProfile(
@@ -43,10 +43,12 @@ class OffboardControl(Node):
         self.offboard_setpoint_counter = 0
         self.vehicle_local_position = VehicleLocalPosition()
         self.vehicle_status = VehicleStatus()
-        self.target_x = 0.0
-        self.target_y = 0.0
+        self.target_x = None
+        self.target_y = None
         self.target_z = -0.
         self.target_yaw = 0.0
+
+        self.do_takeoff = False # False sets the vehicle to land | True sets the vehicle to arm-offboard-takeoff to target_z
 
         # define subscriber for target position
         self.target_pose_subscriber = self.create_subscription(
@@ -59,11 +61,22 @@ class OffboardControl(Node):
         self.timer = self.create_timer(0.1, self.timer_callback)
         self.timer_status = self.create_timer(0.5, self.timer_status_callback)
 
-        self.srv_ = self.create_service(SetBool, 'offboard_ready', self.am_ready_callback)
+        self.takeoff_srv = self.create_service(TakeOff, '/chotto/offboard/takeoff', self.takeoff_callback)
+        self.land_srv = self.create_service(Land, '/chotto/offboard/land', self.land_callback)
 
-    def am_ready_callback(self, request, response):
+    def takeoff_callback(self, request, response):
+        """Callback function for the takeoff service."""
+        self.target_x = self.vehicle_local_position.x
+        self.target_y = self.vehicle_local_position.y
+        self.target_z = -request.height
+        self.do_takeoff = True
         response.success = True
-        # response.message = 'I am ready'
+        return response
+
+    def land_callback(self, request, response):
+        """Callback function for the takeoff service."""
+        self.do_takeoff = False
+        response.success = True
         return response
 
     def publish_target_error(self):
@@ -150,8 +163,7 @@ class OffboardControl(Node):
 
     def timer_callback(self) -> None:
         """Callback function for the timer."""
-        do_arm = self.get_parameter('/chotto_puppet/arm').get_parameter_value().bool_value
-        if do_arm:
+        if self.do_takeoff:
             self.publish_offboard_control_heartbeat_signal()
 
             if self.offboard_setpoint_counter == 10:
