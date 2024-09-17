@@ -11,5 +11,5 @@ docker run --rm -it --privileged --ipc host \
     -e DISPLAY=$DISPLAY \
     -w /root \
     --name offboard_companion \
-    offboard_ros2:v1.14 bash 
+    offboard_ros2:v1.14 bash # colcon build --packages-select offboard_companion
 
