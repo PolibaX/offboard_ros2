@@ -39,7 +39,7 @@ class OffboardControl(Node):
 
         # Create subscribers
         self.vehicle_odometry_subscriber = self.create_subscription(
-            VehicleLocalPosition, '/chotto/fmu/out/vehicle_odometry', self.vehicle_odometry_callback, qos_profile)
+            VehicleOdometry, '/chotto/fmu/out/vehicle_odometry', self.vehicle_odometry_callback, qos_profile)
             # VehicleOdometry, '/fmu/out/vehicle_odometry', self.vehicle_odometry_callback, qos_profile)
         self.vehicle_status_subscriber = self.create_subscription(
             VehicleStatus, '/chotto/fmu/out/vehicle_status', self.vehicle_status_callback, qos_profile)
