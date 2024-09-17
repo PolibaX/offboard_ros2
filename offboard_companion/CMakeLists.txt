@@ -34,6 +34,7 @@ ament_python_install_package(${PROJECT_NAME})
 install(PROGRAMS
   src/nodes/offboard_node/offboard_control.py
   src/nodes/relay_node/relay_pose.py
+  src/nodes/relay_simulazione/relay_simulazione.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
