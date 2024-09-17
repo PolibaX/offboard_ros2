@@ -28,22 +28,22 @@ class OffboardControl(Node):
 
         # Create publishers
         self.offboard_control_mode_publisher = self.create_publisher(
-            OffboardControlMode, '/fmu/in/offboard_control_mode', qos_profile)
-            # OffboardControlMode, '/chotto/fmu/in/offboard_control_mode', qos_profile)
+            OffboardControlMode, '/chotto/fmu/in/offboard_control_mode', qos_profile)
+            # OffboardControlMode, '/fmu/in/offboard_control_mode', qos_profile)
         self.trajectory_setpoint_publisher = self.create_publisher(
-            TrajectorySetpoint, '/fmu/in/trajectory_setpoint', qos_profile)
-            # TrajectorySetpoint, '/chotto/fmu/in/trajectory_setpoint', qos_profile)
+            TrajectorySetpoint, '/chotto/fmu/in/trajectory_setpoint', qos_profile)
+            # TrajectorySetpoint, '/fmu/in/trajectory_setpoint', qos_profile)
         self.vehicle_command_publisher = self.create_publisher(
-            VehicleCommand, '/fmu/in/vehicle_command', qos_profile)
-            # VehicleCommand, '/chotto/fmu/in/vehicle_command', qos_profile)
+            VehicleCommand, '/chotto/fmu/in/vehicle_command', qos_profile)
+            # VehicleCommand, '/fmu/in/vehicle_command', qos_profile)
 
         # Create subscribers
         self.vehicle_odometry_subscriber = self.create_subscription(
-            VehicleOdometry, '/fmu/out/vehicle_odometry', self.vehicle_odometry_callback, qos_profile)
-            # VehicleLocalPosition, '/chotto/fmu/out/vehicle_odometry', self.vehicle_odometry_callback, qos_profile)
+            VehicleLocalPosition, '/chotto/fmu/out/vehicle_odometry', self.vehicle_odometry_callback, qos_profile)
+            # VehicleOdometry, '/fmu/out/vehicle_odometry', self.vehicle_odometry_callback, qos_profile)
         self.vehicle_status_subscriber = self.create_subscription(
-            VehicleStatus, '/fmu/out/vehicle_status', self.vehicle_status_callback, qos_profile)
-            # VehicleStatus, '/chotto/fmu/out/vehicle_status', self.vehicle_status_callback, qos_profile)
+            VehicleStatus, '/chotto/fmu/out/vehicle_status', self.vehicle_status_callback, qos_profile)
+            # VehicleStatus, '/fmu/out/vehicle_status', self.vehicle_status_callback, qos_profile)
 
         # Initialize variables
         self.offboard_setpoint_counter = 0
@@ -80,8 +80,7 @@ class OffboardControl(Node):
 
     def moveto_callback(self, request, response):
         """ accept call only if in offboard mode """
-        if self.vehicle_status.pre_flight_checks_pass and \
-           self.vehicle_status.nav_state == VehicleStatus.NAVIGATION_STATE_OFFBOARD and \
+        if self.vehicle_status.nav_state == VehicleStatus.NAVIGATION_STATE_OFFBOARD and \
            self.vehicle_status.arming_state == VehicleStatus.ARMING_STATE_ARMED and \
             self.check_valid_target(request.x, request.y, -request.z):
             self.target_x = request.x
@@ -98,8 +97,7 @@ class OffboardControl(Node):
     def takeoff_callback(self, request, response):
         """Callback function for the takeoff service."""
         valid_target = self.check_valid_target(self.vehicle_odometry.position[0], self.vehicle_odometry.position[1], -request.height)
-        if self.vehicle_status.pre_flight_checks_pass and \
-            self.vehicle_status.arming_state == VehicleStatus.ARMING_STATE_STANDBY and \
+        if self.vehicle_status.arming_state == VehicleStatus.ARMING_STATE_STANDBY and \
             valid_target:
 
             self.target_x = float( self.vehicle_odometry.position[0] )
@@ -124,7 +122,7 @@ class OffboardControl(Node):
     def land_callback(self, request, response):
         """Callback function for the takeoff service."""
         valid_target = self.check_valid_target(self.vehicle_odometry.position[0], self.vehicle_odometry.position[1], 0.)
-        if self.vehicle_status.pre_flight_checks_pass and valid_target:
+        if valid_target:
             self.target_x = self.vehicle_odometry.position[0]
             self.target_y = self.vehicle_odometry.position[1]
             self.target_z = 0.
@@ -171,7 +169,7 @@ class OffboardControl(Node):
 
     def timer_status_callback(self):
         """Callback function for the timer."""
-        self.get_logger().info(f"Veichle State: {self.vehicle_status.arming_state}")
+        self.get_logger().info(f"Vehicle State: {self.vehicle_status.arming_state}, Preflight Checks: {self.vehicle_status.pre_flight_checks_pass}, Nav State: {self.vehicle_status.nav_state}")
 
     def publish_vehicle_command(self, command, **params) -> None:
         """Publish a vehicle command."""
