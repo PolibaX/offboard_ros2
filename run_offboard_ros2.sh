@@ -5,6 +5,7 @@ docker run --rm -it --privileged --ipc host \
 	--runtime nvidia --gpus all \
     -v ./scripts:/root/scripts \
     -v ./offboard_companion/:/root/ws_offboard/src/offboard_companion \
+    -v ./ros-interfaces/polibax_interfaces:/root/ws_offboard/src/polibax_interfaces \
 	-v /tmp/.X11-unix/:/tmp/.X11-unix \
 	-v ~/.Xauthority:/root/.Xauthority \
     -e XAUTHORITY=/root/.Xauthority \
