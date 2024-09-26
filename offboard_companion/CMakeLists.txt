@@ -30,6 +30,12 @@ endif()
 # Install Python modules
 ament_python_install_package(${PROJECT_NAME})
 
+
+install(
+  DIRECTORY launch
+  DESTINATION share/${PROJECT_NAME}
+)
+
 # Install Python executables
 install(PROGRAMS
   src/nodes/offboard_node/offboard_control.py

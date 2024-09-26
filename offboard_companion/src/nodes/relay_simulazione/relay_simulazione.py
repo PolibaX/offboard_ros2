@@ -44,13 +44,14 @@ class OffboardControl(Node):
     def pose_callback(self, pose_array):
         """Callback function for pose_array topic subscriber."""
         # Get the position of the drone
-        x = pose_array.poses[1].position.x
-        y = pose_array.poses[1].position.y
-        z = pose_array.poses[1].position.z
-        qx = pose_array.poses[1].orientation.x
-        qy = pose_array.poses[1].orientation.y
-        qz = pose_array.poses[1].orientation.z
-        qw = pose_array.poses[1].orientation.w
+        i = -1
+        x = pose_array.poses[i].position.x
+        y = pose_array.poses[i].position.y
+        z = pose_array.poses[i].position.z
+        qx = pose_array.poses[i].orientation.x
+        qy = pose_array.poses[i].orientation.y
+        qz = pose_array.poses[i].orientation.z
+        qw = pose_array.poses[i].orientation.w
         roll, pitch, yaw = R.from_quat([qx,qy,qz,qw]).as_euler('xyz')
         # yaw = yaw - np.pi # subtract 90 degrees offset to yaw        # convert euler angles to quaternion
         qx, qy, qz, qw = R.from_euler('xyz', [roll, pitch, -yaw]).as_quat()
@@ -66,7 +67,7 @@ class OffboardControl(Node):
         # #frame FRD
         # msg.pose_frame = 2
         self.VIO_publisher.publish(self.vehicle_pose)
-        self.get_logger().info('VIO data published')
+        # self.get_logger().info('VIO data published')
 
     def vehicle_local_position_callback(self, vehicle_local_position):
         """Callback function for vehicle_local_position topic subscriber."""
@@ -85,7 +86,7 @@ class OffboardControl(Node):
 
 
 def main(args=None) -> None:
-    print('Starting offboard control node...')
+    print('Starting VIO (sim) Relay node...')
     rclpy.init(args=args)
     offboard_control = OffboardControl()
     rclpy.spin(offboard_control)
