@@ -88,6 +88,7 @@ class OffboardControl(Node):
             self.target_z = -request.z
             self.target_yaw = request.yaw
             response.success = True
+            self.get_logger().info(f"Moving to: {self.target_x, self.target_y, self.target_z, self.target_yaw}")
         else:
             if self.check_valid_target(request.x, request.y, -request.z):
                 self.get_logger().info(f"Invalid target for moveto: {request.x, request.y, -request.z}")
