@@ -17,7 +17,7 @@ class OffboardControl(Node):
 
     def __init__(self) -> None:
         super().__init__('offboard_control')
-
+        
         # Configure QoS profile for publishing and subscribing
         qos_profile = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT,
@@ -245,11 +245,14 @@ class OffboardControl(Node):
             if self.offboard_setpoint_counter == 10:
                 self.engage_offboard_mode()
                 self.arm()
+                print("Arming and engaging offboard mode")
 
-            if self.vehicle_status.nav_state == VehicleStatus.NAVIGATION_STATE_OFFBOARD:
-                self.publish_position_setpoint()
-                self.publish_target_error()
-
+           
+             
+                
+            self.publish_position_setpoint()
+            self.publish_target_error()
+                
 
             if self.offboard_setpoint_counter < 11:
                 self.offboard_setpoint_counter += 1
