@@ -51,8 +51,8 @@ class OffboardControl(Node):
         # self.FRD_pose.timestamp = msg.header.stamp.sec*100
         # convert the vicon data to FRD frame
 
-        self.FRD_pose.position = [msg.pose.position.x, -msg.pose.position.y, -msg.pose.position.z] # from FLU to FRD
-        # self.FRD_pose.position = [msg.pose.position.y, msg.pose.position.x, -msg.pose.position.z] # from RFU to FRD
+        # self.FRD_pose.position = [msg.pose.position.x, -msg.pose.position.y, -msg.pose.position.z] # from FLU to FRD
+        self.FRD_pose.position = [msg.pose.position.y, msg.pose.position.x, -msg.pose.position.z] # from RFU to FRD
         # convert vicon quaternion to euler angles
         roll, pitch, yaw = R.from_quat([msg.pose.orientation.x, \
                                         msg.pose.orientation.y, \
