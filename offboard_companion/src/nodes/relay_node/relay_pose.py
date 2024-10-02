@@ -89,7 +89,7 @@ class OffboardControl(Node):
 
 
 def main(args=None) -> None:
-    print('Starting offboard control node...')
+    print('Starting relay_pose node...')
     rclpy.init(args=args)
     offboard_control = OffboardControl()
     rclpy.spin(offboard_control)
