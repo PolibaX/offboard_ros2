@@ -1,0 +1,37 @@
+FROM ros:jazzy
+
+# use bash
+SHELL ["/bin/bash", "-c"]
+
+# install utilities 
+RUN apt update && apt upgrade -y && \
+    apt install -y vim nano git wget curl \
+    iputils-ping net-tools openssh-server pip
+
+
+# debian non interactive
+ENV DEBIAN_FRONTEND=noninteractive
+
+
+# python dependencies
+# RUN pip install --user -U empy==3.3.4 pyros-genmsg setuptools==70.0.0
+
+# build ROS2 workspace
+WORKDIR /root/ws_offboard/
+RUN apt install -y python3-venv
+RUN bash -c "python3 -m venv .venv \
+        && source .venv/bin/activate \
+        && pip install -U \
+            scipy pyyaml"
+
+WORKDIR /root
+RUN mkdir -p ~/ws_offboard/src/
+WORKDIR /root/ws_offboard/src/
+RUN git clone --branch release/1.14 https://github.com/PX4/px4_msgs.git
+RUN git clone --branch release/v1.14 https://github.com/PX4/px4_ros_com.git
+WORKDIR /root/ws_offboard/
+RUN source /opt/ros/jazzy/setup.bash && colcon build --symlink-install
+
+RUN echo 'source .venv/bin/activate && source install/setup.bash' >> /root/.bashrc
+
+# ENV ROS_DOMAIN_ID=33 # USE ONLY FOR SIMULATION

@@ -31,7 +31,7 @@ class OffboardControl(Node):
         self.vehicle_status_subscriber = self.create_subscription(
             VehicleStatus, '/chotto/fmu/out/vehicle_status', self.vehicle_status_callback, qos_profile)
 
-        self.zed_sub = self.create_subscription(PoseStamped, '/chotto/zed_node/pose', self.zed_callback, 10)
+        self.zed_sub = self.create_subscription(PoseStamped, '/chotto/zed_node/pose', self.zed_callback, 3)
         # self.zed_sub = self.create_subscription(PoseStamped, '/mini_zed_wrapper/pose', self.zed_callback, 10)
         self.FRD_pose = VehicleOdometry()
         self.FRD_pose.pose_frame = 2
@@ -45,20 +45,20 @@ class OffboardControl(Node):
         self.vehicle_status = VehicleStatus()
 
         # Create a timer to publish VIO data (VIO=Visual Inertial Odometry)
-        self.timer = self.create_timer(1/50, self.timer_callback)
+        self.timer = self.create_timer(1/15, self.timer_callback)
 
     def zed_callback(self, msg):
         # self.FRD_pose.timestamp = msg.header.stamp.sec*100
         # convert the vicon data to FRD frame
 
         # self.FRD_pose.position = [msg.pose.position.x, -msg.pose.position.y, -msg.pose.position.z] # from FLU to FRD
-        self.FRD_pose.position = [msg.pose.position.y, msg.pose.position.x, -msg.pose.position.z] # from RFU to FRD
+        self.FRD_pose.position = [msg.pose.position.x, -msg.pose.position.y, -msg.pose.position.z] # from RFU to FRD
         # convert vicon quaternion to euler angles
         roll, pitch, yaw = R.from_quat([msg.pose.orientation.x, \
                                         msg.pose.orientation.y, \
                                         msg.pose.orientation.z, \
                                         msg.pose.orientation.w]).as_euler('xyz')
-        yaw_FRD = -yaw # from * to FRD
+        yaw_FRD = -yaw - np.pi/2# from * to FRD
         # convert euler angles to quaternion
         qx, qy, qz, qw = R.from_euler('xyz', [roll, pitch, yaw_FRD]).as_quat()
         self.FRD_pose.q = [qw, qx, qy, qz]

@@ -1,0 +1,30 @@
+FROM ros:jazzy-ros-base
+
+# debian non interactive
+ENV DEBIAN_FRONTEND=noninteractive
+
+# install utilities 
+RUN apt update && apt upgrade -y && \
+    apt install -y vim nano git wget curl \
+    python3-venv python3-pip python3-yaml python3-scipy
+
+# build ROS2 workspace
+WORKDIR /root/ws_offboard/
+#RUN bash -c "python3 -m venv .venv \
+#        && source .venv/bin/activate \
+#        && pip install --break-system-packages -U \
+#            scipy \
+#	    pyyaml"
+
+WORKDIR /root/ws_offboard
+RUN mkdir src \
+    && git clone --depth 1 --branch release/1.14 https://github.com/PX4/px4_msgs.git src/px4_msgs \
+    && git clone --depth 1 --branch release/v1.14 https://github.com/PX4/px4_ros_com.git src/px4_ros_com
+
+#RUN bash -c "source /root/ws_offboard/.venv/bin/activate && source /opt/ros/jazzy/setup.bash && colcon build"
+RUN bash -c "source /opt/ros/jazzy/setup.bash && colcon build"
+
+#RUN echo "source /root/ws_offboard/.venv/bin/activate" >> /root/.bashrc
+RUN echo "source /root/ws_offboard/install/setup.bash" >> /root/.bashrc
+
+# ENV ROS_DOMAIN_ID=33 # USE ONLY FOR SIMULATION
