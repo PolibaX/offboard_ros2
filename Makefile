@@ -13,7 +13,6 @@ build: ## Build release container
 	@echo "Please build all Docker Images from https://github.com/PolibaX/docker.git"
 
 run-dev: ## Run a disposable development container
-	@xhost +
 	@docker run --rm -it --privileged --ipc host \
 		--net host\
 		--runtime nvidia --gpus all \
@@ -34,7 +33,6 @@ run-dev: ## Run a disposable development container
 		bash
 
 run: ## Run a disposable development container
-	@xhost +
 	@docker run --rm -it --privileged --ipc host \
 		--net host\
 		--runtime nvidia --gpus all \
