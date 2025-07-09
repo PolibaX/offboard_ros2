@@ -11,6 +11,7 @@ from polibax_interfaces.srv import Takeoff, Land, MoveTo
 
 from scipy.spatial.transform import Rotation as R
 import numpy as np
+from tf2_ros import TransformListener, Buffer, StaticTransformBroadcaster, TransformStamped
 
 class OffboardControl(Node):
     """Node for controlling a vehicle in offboard mode."""
@@ -49,12 +50,12 @@ class OffboardControl(Node):
         self.offboard_setpoint_counter = 0
         self.vehicle_odometry = VehicleOdometry()
         self.vehicle_status = VehicleStatus()
-        self.target_x = None
-        self.target_y = None
-        self.target_z = -0.
-        self.target_yaw = 0.0
+        self.setpoint_x = None
+        self.setpoint_y = None
+        self.setpoint_z = 0.
+        self.setpoint_yaw = 0.0
 
-        self.do_takeoff = False # False sets the vehicle to land | True sets the vehicle to arm-offboard-takeoff to target_z
+        self.do_takeoff = False # False sets the vehicle to land | True sets the vehicle to arm-offboard-takeoff to setpoint_z
 
         # define subscriber for target position
         # self.target_pose_subscriber = self.create_subscription(
@@ -75,60 +76,102 @@ class OffboardControl(Node):
         self.max_x = 18.
         self.min_y = -2.
         self.max_y = 18.
-        self.min_z = -3.
-        self.max_z = 0.
+        self.min_z = -0.01
+        self.max_z = 3.
+
+        self.tf_buffer = Buffer()
+        self.tf_listener = TransformListener(self.tf_buffer, self)
+        self.FRD_px4_odom_frame = 'chotto/odom_px4_FRD'
+        self.baselink_frame = 'chotto/base_link'  # Define the base frame for the vehicle odometry
+        self.map_frame = 'map'  # Define the global frame for the vehicle odometry
+
+        self.enable_debug_topics = True
+        if self.enable_debug_topics:
+            self.goal_publisher = self.create_publisher(
+                PoseStamped, '/chotto/offboard/goal', qos_profile)
 
     def moveto_callback(self, request, response):
-        """ accept call only if in offboard mode """
-        if self.vehicle_status.nav_state == VehicleStatus.NAVIGATION_STATE_OFFBOARD and \
-           self.vehicle_status.arming_state == VehicleStatus.ARMING_STATE_ARMED and \
-            self.check_valid_target(request.x, request.y, -request.z):
-            self.target_x = request.x
-            self.target_y = request.y
-            self.target_z = -request.z
-            self.target_yaw = request.yaw
+        valid_target = self.check_valid_target(request.x, request.y, request.z, request.yaw, request.frame_id)
+        """ request contains x, y, z, yaw and the frame_id of the setpoint to be reached """
+        if ((self.vehicle_status.nav_state == VehicleStatus.NAVIGATION_STATE_OFFBOARD and \
+           self.vehicle_status.arming_state == VehicleStatus.ARMING_STATE_ARMED) or self.enable_debug_topics) and \
+            valid_target:
+            # Transform the target position to the FRD_px4_odom_frame
+            try:
+                self.setpoint_x, \
+                self.setpoint_y, \
+                self.setpoint_z, \
+                self.setpoint_yaw = self.transform_setpoint(
+                    request.x, 
+                    request.y, 
+                    request.z, 
+                    request.yaw, 
+                    request.frame_id, 
+                    target_frame_id=self.FRD_px4_odom_frame)
+            except Exception as e:
+                self.get_logger().error(f"Error in TF lookup: {e}")
+                response.success = False
+                return response
+            self.setpoint_frame_id = request.frame_id
             response.success = True
-            self.get_logger().info(f"Moving to: {self.target_x, self.target_y, self.target_z, self.target_yaw}")
+            self.get_logger().info(f"Moving to: {self.setpoint_x, self.setpoint_y, self.setpoint_z, self.setpoint_yaw}")
         else:
-            if self.check_valid_target(request.x, request.y, -request.z):
-                self.get_logger().info(f"Invalid target for moveto: {request.x, request.y, -request.z}")
+            if self.check_valid_target(request.x, request.y, request.z):
+                self.get_logger().info(f"Invalid target for moveto: {request.x, request.y, request.z}")
             response.success = False
         return response
 
     def takeoff_callback(self, request, response):
         """Callback function for the takeoff service."""
-        valid_target = self.check_valid_target(self.vehicle_odometry.position[0], self.vehicle_odometry.position[1], -request.height)
-        if self.vehicle_status.arming_state == VehicleStatus.ARMING_STATE_STANDBY and \
+        valid_target = self.check_valid_target(
+            0., 
+            0., 
+            request.height,
+            frame_id=self.baselink_frame)
+        if ((self.vehicle_status.arming_state == VehicleStatus.ARMING_STATE_STANDBY) or self.enable_debug_topics) and \
             valid_target:
 
-            self.target_x = float( self.vehicle_odometry.position[0] )
-            self.target_y = float( self.vehicle_odometry.position[1] )
-            self.target_z = -request.height
-            yaw = R.from_quat([
-                self.vehicle_odometry.q[0], 
-                self.vehicle_odometry.q[1], 
-                self.vehicle_odometry.q[2], 
-                self.vehicle_odometry.q[3]]).as_euler('xyz')[2]
-            self.target_yaw = yaw
-            print(f"Takeoff to: {self.target_x, self.target_y, self.target_z, self.target_yaw}")
+            self.setpoint_x, \
+            self.setpoint_y, \
+            self.setpoint_z, \
+            self.setpoint_yaw = self.transform_setpoint(
+                0., 
+                0., 
+                request.height, 
+                0.,
+                self.baselink_frame, 
+                target_frame_id=self.FRD_px4_odom_frame)
+            print(f"Takeoff to: {self.setpoint_x, self.setpoint_y, self.setpoint_z, self.setpoint_yaw}")
             self.do_takeoff = True
             response.success = True
             self.offboard_setpoint_counter = 0
         else:
             if not valid_target:
-                self.get_logger().info(f"Invalid target for takeoff: {self.vehicle_odometry.position[0], self.vehicle_odometry.position[1], -request.height}")
+                self.get_logger().info(f"Invalid target for takeoff: {self.vehicle_odometry.position[0], self.vehicle_odometry.position[1], request.height}")
             response.success = False
         return response
 
     def land_callback(self, request, response):
         """Callback function for the takeoff service."""
-        valid_target = self.check_valid_target(self.vehicle_odometry.position[0], self.vehicle_odometry.position[1], 0.)
+        vehicle_yaw = R.from_quat([
+                self.vehicle_odometry.orientation[0], 
+                self.vehicle_odometry.orientation[1], 
+                self.vehicle_odometry.orientation[2],
+                self.vehicle_odometry.orientation[3]
+                ]).as_euler('xyz')[2]
+        valid_target = self.check_valid_target(
+            self.vehicle_odometry.position[0], 
+            self.vehicle_odometry.position[1], 
+            0.,
+            vehicle_yaw,
+            frame_id=self.odom_frame)
         if valid_target:
-            self.target_x = self.vehicle_odometry.position[0]
-            self.target_y = self.vehicle_odometry.position[1]
-            self.target_z = 0.
+            self.setpoint_x = self.vehicle_odometry.position[0]
+            self.setpoint_y = self.vehicle_odometry.position[1]
+            self.setpoint_z = 0.
+            self.setpoint_yaw = vehicle_yaw
             self.do_takeoff = False
-            print(f"Land to: {self.target_x, self.target_y, self.target_z}")
+            print(f"Land to: {self.setpoint_x, self.setpoint_y, self.setpoint_z}")
             response.success = True
             self.land()
         else:
@@ -139,16 +182,16 @@ class OffboardControl(Node):
     def publish_target_error(self):
         """Publish the error between the target and the current position."""
         msg = PoseStamped()
-        msg.pose.position.x = float( self.target_x - self.vehicle_odometry.position[0] )
-        msg.pose.position.y = float( self.target_y - self.vehicle_odometry.position[1] )
-        msg.pose.position.z = float( self.target_z - self.vehicle_odometry.position[2] )
+        msg.pose.position.x = float( self.setpoint_x - self.vehicle_odometry.position[0] )
+        msg.pose.position.y = float( self.setpoint_y - self.vehicle_odometry.position[1] )
+        msg.pose.position.z = float( self.setpoint_z - self.vehicle_odometry.position[2] )
         self.target_error_publisher.publish(msg)
 
     # def target_pose_callback(self, msg):
-    #     self.target_x = msg.pose.position.x
-    #     self.target_y = msg.pose.position.y
-    #     self.target_z = msg.pose.position.z
-    #     self.target_yaw = R.from_quat([
+    #     self.setpoint_x = msg.pose.position.x
+    #     self.setpoint_y = msg.pose.position.y
+    #     self.setpoint_z = msg.pose.position.z
+    #     self.setpoint_yaw = R.from_quat([
     #             msg.pose.orientation.x, 
     #             msg.pose.orientation.y, 
     #             msg.pose.orientation.z, 
@@ -228,14 +271,22 @@ class OffboardControl(Node):
     def publish_position_setpoint(self):
         """Publish the trajectory setpoint."""
         msg = TrajectorySetpoint()
-        msg.position = [
-            self.target_x, self.target_y, self.target_z
-        ]
-        # msg.yaw = 1.57079  # (90 degree)
-        msg.yaw = self.target_yaw
+        msg.position = [ self.setpoint_x, self.setpoint_y, self.setpoint_z ]
+        msg.yaw = self.setpoint_yaw
         msg.timestamp = int(self.get_clock().now().nanoseconds / 1000)
-        self.trajectory_setpoint_publisher.publish(msg)
-        # self.get_logger().info(f"Publishing position setpoints {[self.target_x, self.target_y, self.target_z]}")
+        # self.trajectory_setpoint_publisher.publish(msg)
+        if self.enable_debug_topics:
+            self.goal_publisher.publish(PoseStamped(
+                header=msg.header,
+                pose=geometry_msgs.msg.Pose(
+                    position=geometry_msgs.msg.Point(
+                        x=self.setpoint_x, 
+                        y=self.setpoint_y, 
+                        z=self.setpoint_z),
+                    orientation=R.from_euler('xyz', [0, 0, self.setpoint_yaw]).as_quat()
+                )
+            ))
+        # self.get_logger().info(f"Publishing position setpoints {[self.setpoint_x, self.setpoint_y, self.setpoint_z]}")
 
     def timer_callback(self) -> None:
         """Callback function for the timer."""
@@ -259,11 +310,40 @@ class OffboardControl(Node):
         elif self.vehicle_status.nav_state == VehicleStatus.NAVIGATION_STATE_AUTO_LAND:
             self.offboard_setpoint_counter = 0
         
-    def check_valid_target(self, x, y, z):
+    def check_valid_target(self, x, y, z, yaw, frame_id):
+        try:
+            x, y, z, _ = self.transform_setpoint(x, y, z, frame_id, target_frame_id=self.map_frame)
+        except:
+            return False
+        # Transform the target position to the map frame
         return self.min_x <= float( x ) <= self.max_x and \
                self.min_y <= float( y ) <= self.max_y and \
                self.min_z <= float( z ) <= self.max_z
 
+    def transform_setpoint(self, x, y, z, yaw, frame_id, target_frame_id):
+        try:
+            target_pose = geometry_msgs.msg.PoseStamped()
+            target_pose.header.frame_id = frame_id
+            target_pose.pose.position.x = float(x)
+            target_pose.pose.position.y = float(y)
+            target_pose.pose.position.z = float(z)
+            target_pose.pose.orientation = R.from_euler('xyz', [0, 0, yaw]).as_quat()
+            target_pose_transformed = self.tf_buffer.transform(
+                target_pose, target_frame_id, timeout=rclpy.duration.Duration(seconds=1.0))
+            x = target_pose_transformed.pose.position.x
+            y = target_pose_transformed.pose.position.y
+            z = target_pose_transformed.pose.position.z
+            yaw = R.from_quat([
+                target_pose_transformed.pose.orientation.x, 
+                target_pose_transformed.pose.orientation.y, 
+                target_pose_transformed.pose.orientation.z, 
+                target_pose_transformed.pose.orientation.w
+            ]).as_euler('xyz')[2]
+        except Exception as e:
+            self.get_logger().error(f"Error in TF lookup: {e}")
+            raise e
+        return x, y, z, yaw
+        
 
 def main(args=None) -> None:
     print('Starting offboard control node...')
