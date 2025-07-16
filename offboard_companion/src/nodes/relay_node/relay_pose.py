@@ -40,7 +40,7 @@ class OffboardControl(Node):
         # self.tf_timer = self.create_timer(1/51, self.tf_timer_callback)
 
         self.zed_sub = self.create_subscription(PoseStamped, '/chotto/pose', self.zed_callback, 3)
-        # self.zed_sub = self.create_subscription(PoseStamped, '/mini_zed_wrapper/pose', self.zed_callback, 10)
+        # self.zed_sub = self.create_subscription(PoseStamped, '/vicon/matte/matte', self.zed_callback, 10)
         self.FRD_pose = VehicleOdometry()
         self.FRD_pose.pose_frame = 2
         """
@@ -53,7 +53,7 @@ class OffboardControl(Node):
         self.vehicle_status = VehicleStatus()
 
         # Create a timer to publish VIO data (VIO=Visual Inertial Odometry)
-        self.timer = self.create_timer(1/50, self.timer_callback)
+        self.timer = self.create_timer(1/31, self.timer_callback)
 
         self.tf_static_broadcaster = StaticTransformBroadcaster(self)
         # Publish a static transform from the baselink FLU to baselink FRD
@@ -96,8 +96,7 @@ class OffboardControl(Node):
         # convert the vicon data to FRD frame
 
         # Choose your conversion (depending on the zed camera convention)
-        # self.FRD_pose.position = [msg.pose.position.x, -msg.pose.position.y, -msg.pose.position.z] # from FLU to FRD
-        self.FRD_pose.position = [msg.pose.position.x, -msg.pose.position.y, -msg.pose.position.z] # (VERGOGNA)
+        self.FRD_pose.position = [msg.pose.position.x, -msg.pose.position.y, -msg.pose.position.z] # from FLU to FRD
         # self.FRD_pose.position = [msg.pose.position.y, msg.pose.position.x, -msg.pose.position.z] # from RFU to FRD
         # convert vicon quaternion to euler angles
         roll, pitch, yaw = R.from_quat([msg.pose.orientation.x, \
@@ -108,9 +107,8 @@ class OffboardControl(Node):
         # convert euler angles to quaternion
         qx, qy, qz, qw = R.from_euler('xyz', [roll, pitch, yaw_FRD]).as_quat()
         self.FRD_pose.q = [qw, qx, qy, qz]
-        # self.FRD_pose.pose.covariance = np.eye(6, dtype=np.float32).reshape((1,36)).tolist()[0]
-        # self.FRD_pose.position_variance = [0.01,0.01,0.01]
-        # self.FRD_pose.orientation_variance = [0.01,0.01,0.01]
+        self.FRD_pose.position_variance = [0.01,0.01,0.01]
+        self.FRD_pose.orientation_variance = [0.01,0.01,0.01]
     
     def publish_VIO_data(self):
         """Publish VIO data to the FMU."""
