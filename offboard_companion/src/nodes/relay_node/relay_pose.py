@@ -53,7 +53,7 @@ class OffboardControl(Node):
         self.vehicle_status = VehicleStatus()
 
         # Create a timer to publish VIO data (VIO=Visual Inertial Odometry)
-        self.timer = self.create_timer(1/31, self.timer_callback)
+        self.timer = self.create_timer(1/61, self.timer_callback)
 
         self.tf_static_broadcaster = StaticTransformBroadcaster(self)
         # Publish a static transform from the baselink FLU to baselink FRD
@@ -107,8 +107,8 @@ class OffboardControl(Node):
         # convert euler angles to quaternion
         qx, qy, qz, qw = R.from_euler('xyz', [roll, pitch, yaw_FRD]).as_quat()
         self.FRD_pose.q = [qw, qx, qy, qz]
-        self.FRD_pose.position_variance = [0.01,0.01,0.01]
-        self.FRD_pose.orientation_variance = [0.01,0.01,0.01]
+        # self.FRD_pose.position_variance = [0.01,0.01,0.01]
+        # self.FRD_pose.orientation_variance = [0.01,0.01,0.01]
     
     def publish_VIO_data(self):
         """Publish VIO data to the FMU."""
