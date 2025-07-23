@@ -19,34 +19,8 @@ class OffboardControl(Node):
     def __init__(self) -> None:
         super().__init__('offboard_control')
         
-        # Configure QoS profile for publishing and subscribing
-        qos_profile = QoSProfile(
-            reliability=ReliabilityPolicy.BEST_EFFORT,
-            durability=DurabilityPolicy.TRANSIENT_LOCAL,
-            history=HistoryPolicy.KEEP_LAST,
-            depth=1
-        )
-
-        # Create publishers
-        self.offboard_control_mode_publisher = self.create_publisher(
-            OffboardControlMode, '/chotto/fmu/in/offboard_control_mode', qos_profile)
-            # OffboardControlMode, '/fmu/in/offboard_control_mode', qos_profile)
-        self.trajectory_setpoint_publisher = self.create_publisher(
-            TrajectorySetpoint, '/chotto/fmu/in/trajectory_setpoint', qos_profile)
-            # TrajectorySetpoint, '/fmu/in/trajectory_setpoint', qos_profile)
-        self.vehicle_command_publisher = self.create_publisher(
-            VehicleCommand, '/chotto/fmu/in/vehicle_command', qos_profile)
-            # VehicleCommand, '/fmu/in/vehicle_command', qos_profile)
-
-        # Create subscribers
-        self.vehicle_odometry_subscriber = self.create_subscription(
-            VehicleOdometry, '/chotto/fmu/out/vehicle_odometry', self.vehicle_odometry_callback, qos_profile)
-            # VehicleOdometry, '/fmu/out/vehicle_odometry', self.vehicle_odometry_callback, qos_profile)
-        self.vehicle_status_subscriber = self.create_subscription(
-            VehicleStatus, '/chotto/fmu/out/vehicle_status', self.vehicle_status_callback, qos_profile)
-            # VehicleStatus, '/fmu/out/vehicle_status', self.vehicle_status_callback, qos_profile)
-
         # Initialize variables
+        self.namespace = 'matte'
         self.offboard_setpoint_counter = 0
         self.vehicle_odometry = VehicleOdometry()
         self.vehicle_status = VehicleStatus()
@@ -57,20 +31,48 @@ class OffboardControl(Node):
 
         self.do_takeoff = False # False sets the vehicle to land | True sets the vehicle to arm-offboard-takeoff to setpoint_z
 
+        
+        # Configure QoS profile for publishing and subscribing
+        qos_profile = QoSProfile(
+            reliability=ReliabilityPolicy.BEST_EFFORT,
+            durability=DurabilityPolicy.TRANSIENT_LOCAL,
+            history=HistoryPolicy.KEEP_LAST,
+            depth=1
+        )
+
+        # Create publishers
+        self.offboard_control_mode_publisher = self.create_publisher(
+            OffboardControlMode, f'/{self.namespace}/fmu/in/offboard_control_mode', qos_profile)
+            # OffboardControlMode, '/fmu/in/offboard_control_mode', qos_profile)
+        self.trajectory_setpoint_publisher = self.create_publisher(
+            TrajectorySetpoint, f'/{self.namespace}/fmu/in/trajectory_setpoint', qos_profile)
+            # TrajectorySetpoint, '/fmu/in/trajectory_setpoint', qos_profile)
+        self.vehicle_command_publisher = self.create_publisher(
+            VehicleCommand, f'/{self.namespace}/fmu/in/vehicle_command', qos_profile)
+            # VehicleCommand, '/fmu/in/vehicle_command', qos_profile)
+
+        # Create subscribers
+        self.vehicle_odometry_subscriber = self.create_subscription(
+            VehicleOdometry, f'/{self.namespace}/fmu/out/vehicle_odometry', self.vehicle_odometry_callback, qos_profile)
+            # VehicleOdometry, '/fmu/out/vehicle_odometry', self.vehicle_odometry_callback, qos_profile)
+        self.vehicle_status_subscriber = self.create_subscription(
+            VehicleStatus, f'/{self.namespace}/fmu/out/vehicle_status', self.vehicle_status_callback, qos_profile)
+            # VehicleStatus, '/fmu/out/vehicle_status', self.vehicle_status_callback, qos_profile)
+
         # define subscriber for target position
         # self.target_pose_subscriber = self.create_subscription(
         #     PoseStamped, '/chotto/offboard/pose_target', self.target_pose_callback, qos_profile)
 
         self.target_error_publisher = self.create_publisher(
-            PoseStamped, '/chotto/offboard/pose_error', qos_profile)
+            PoseStamped, f'/{self.namespace}/offboard/pose_error', qos_profile)
 
         # Create a timer to publish control commands
         self.timer = self.create_timer(0.1, self.timer_callback)
         self.timer_status = self.create_timer(1., self.timer_status_callback)
 
-        self.takeoff_srv = self.create_service(Takeoff, '/chotto/offboard/takeoff', self.takeoff_callback)
-        self.land_srv = self.create_service(Land, '/chotto/offboard/land', self.land_callback)
-        self.land_srv = self.create_service(MoveTo, '/chotto/offboard/moveto', self.moveto_callback)
+        self.takeoff_srv = self.create_service(Takeoff, f'/{self.namespace}/offboard/takeoff', self.takeoff_callback)
+        self.land_srv = self.create_service(Land, f'/{self.namespace}/offboard/land', self.land_callback)
+        self.land_srv = self.create_service(MoveTo, f'/{self.namespace}/offboard/moveto', self.moveto_callback)
 
         self.min_x = -2.
         self.max_x = 18.
@@ -81,14 +83,15 @@ class OffboardControl(Node):
 
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
-        self.FRD_px4_odom_frame = 'chotto/odom_px4_FRD'
-        self.baselink_frame = 'chotto/base_link'  # Define the base frame for the vehicle odometry
+        self.odom_frame = f'{self.namespace}/odom'
+        self.FRD_px4_odom_frame = f'{self.namespace}/odom_px4_FRD'
+        self.baselink_frame = f'{self.namespace}/base_link'  # Define the base frame for the vehicle odometry
         self.map_frame = 'map'  # Define the global frame for the vehicle odometry
 
         self.enable_debug_topics = True
         if self.enable_debug_topics:
             self.goal_publisher = self.create_publisher(
-                PoseStamped, '/chotto/offboard/goal', qos_profile)
+                PoseStamped, f'/{self.namespace}/offboard/goal', qos_profile)
 
     def moveto_callback(self, request, response):
         valid_target = self.check_valid_target(request.x, request.y, request.z, request.yaw, request.frame_id)
@@ -116,18 +119,26 @@ class OffboardControl(Node):
             response.success = True
             self.get_logger().info(f"Moving to: {self.setpoint_x, self.setpoint_y, self.setpoint_z, self.setpoint_yaw}")
         else:
-            if self.check_valid_target(request.x, request.y, request.z):
-                self.get_logger().info(f"Invalid target for moveto: {request.x, request.y, request.z}")
+            if self.check_valid_target(request.x, request.y, request.z, request.yaw, request.frame_id):
+                self.get_logger().info(f"Invalid target for moveto: {request.x, request.y, request.z, request.yaw, request.frame_id}")
             response.success = False
         return response
 
     def takeoff_callback(self, request, response):
         """Callback function for the takeoff service."""
+        vehicle_yaw = R.from_quat([
+                self.vehicle_odometry.q[0], 
+                self.vehicle_odometry.q[1], 
+                self.vehicle_odometry.q[2],
+                self.vehicle_odometry.q[3]
+                ]).as_euler('xyz')[2]
+        
         valid_target = self.check_valid_target(
             0., 
             0., 
             request.height,
-            frame_id=self.baselink_frame)
+            vehicle_yaw,
+            frame_id=self.odom_frame)
         if ((self.vehicle_status.arming_state == VehicleStatus.ARMING_STATE_STANDBY) or self.enable_debug_topics) and \
             valid_target:
 
@@ -154,10 +165,10 @@ class OffboardControl(Node):
     def land_callback(self, request, response):
         """Callback function for the takeoff service."""
         vehicle_yaw = R.from_quat([
-                self.vehicle_odometry.orientation[0], 
-                self.vehicle_odometry.orientation[1], 
-                self.vehicle_odometry.orientation[2],
-                self.vehicle_odometry.orientation[3]
+                self.vehicle_odometry.q[0], 
+                self.vehicle_odometry.q[1], 
+                self.vehicle_odometry.q[2],
+                self.vehicle_odometry.q[3]
                 ]).as_euler('xyz')[2]
         valid_target = self.check_valid_target(
             self.vehicle_odometry.position[0], 

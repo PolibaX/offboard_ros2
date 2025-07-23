@@ -29,6 +29,7 @@ def generate_launch_description():
         emulate_tty=True,
         # arguements/parameters
         parameters=[
+            {"use_sim_time": True},
             # {"points_in": LaunchConfiguration('points_in')},
             # {"odom_in": LaunchConfiguration('odom_in')},
             # {"verbose": LaunchConfiguration('verbose')},
@@ -44,6 +45,7 @@ def generate_launch_description():
         emulate_tty=True,
         # arguements/parameters
         parameters=[
+            {"use_sim_time": True},
             # {"points_in": LaunchConfiguration('points_in')},
             # {"odom_in": LaunchConfiguration('odom_in')},
             # {"verbose": LaunchConfiguration('verbose')},
