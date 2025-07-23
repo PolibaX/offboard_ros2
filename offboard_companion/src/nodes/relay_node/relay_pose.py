@@ -23,23 +23,25 @@ class OffboardControl(Node):
             history=HistoryPolicy.KEEP_LAST,
             depth=1
         )
+        
+        self.namespace = 'chotto'
 
         # Create publishers
         self.VIO_publisher = self.create_publisher(
-            VehicleOdometry, '/chotto/fmu/in/vehicle_visual_odometry', qos_profile)
-         
+            VehicleOdometry, f'/{self.namespace}/fmu/in/vehicle_visual_odometry', qos_profile)
+
 
         self.vehicle_status_subscriber = self.create_subscription(
-            VehicleStatus, '/chotto/fmu/out/vehicle_status', self.vehicle_status_callback, qos_profile)
+            VehicleStatus, f'/{self.namespace}/fmu/out/vehicle_status', self.vehicle_status_callback, qos_profile)
 
-        self.FRD_px4_odom_frame = 'chotto/odom_px4_FRD' 
-        self.odom_frame = 'chotto/odom'  # Define the global frame for the vehicle odometry
-        self.base_frame = 'chotto/base_link'  # Define the base frame for the vehicle odometry
+        self.FRD_px4_odom_frame = f'{self.namespace}/odom_px4_FRD'
+        self.odom_frame = f'{self.namespace}/odom'  # Define the global frame for the vehicle odometry
+        self.base_frame = f'{self.namespace}/base_link'  # Define the base frame for the vehicle odometry
         # self.tf_buffer = Buffer()
         # self.tf_listener = TransformListener(self.tf_buffer, self)
         # self.tf_timer = self.create_timer(1/51, self.tf_timer_callback)
 
-        self.zed_sub = self.create_subscription(PoseStamped, '/chotto/pose', self.zed_callback, 3)
+        self.zed_sub = self.create_subscription(PoseStamped, f'/{self.namespace}/pose', self.zed_callback, 3)
         # self.zed_sub = self.create_subscription(PoseStamped, '/vicon/matte/matte', self.zed_callback, 10)
         self.FRD_pose = VehicleOdometry()
         self.FRD_pose.pose_frame = 2
@@ -72,24 +74,24 @@ class OffboardControl(Node):
         static_transform.transform.rotation.w = tmp[3]
         self.tf_static_broadcaster.sendTransform(static_transform)
     
-    def tf_timer_callback(self):
-        """Callback function for the TF timer."""
-        try:
-            transform = self.tf_buffer.lookup_transform(
-                self.FRD_px4_odom_frame, self.base_frame, rclpy.time.Time())
-            if transform is not None:
-                self.FRD_pose.position = [
-                    transform.transform.translation.x,
-                    transform.transform.translation.y,
-                    transform.transform.translation.z
-                ]
-                q = transform.transform.rotation
-                self.FRD_pose.q = [q.w, q.x, q.y, q.z]
-                # self.FRD_pose.pose.covariance = np.eye(6, dtype=np.float32).reshape((1, 36)).tolist()[0]
-            else:
-                self.get_logger().warn("Transform not found, using last known pose.")
-        except Exception as e:
-            self.get_logger().error(f"Error in TF lookup: {e}")
+    # def tf_timer_callback(self):
+    #     """Callback function for the TF timer."""
+    #     try:
+    #         transform = self.tf_buffer.lookup_transform(
+    #             self.FRD_px4_odom_frame, self.base_frame, rclpy.time.Time())
+    #         if transform is not None:
+    #             self.FRD_pose.position = [
+    #                 transform.transform.translation.x,
+    #                 transform.transform.translation.y,
+    #                 transform.transform.translation.z
+    #             ]
+    #             q = transform.transform.rotation
+    #             self.FRD_pose.q = [q.w, q.x, q.y, q.z]
+    #             # self.FRD_pose.pose.covariance = np.eye(6, dtype=np.float32).reshape((1, 36)).tolist()[0]
+    #         else:
+    #             self.get_logger().warn("Transform not found, using last known pose.")
+    #     except Exception as e:
+    #         self.get_logger().error(f"Error in TF lookup: {e}")
 
     def zed_callback(self, msg):
         # self.FRD_pose.timestamp = msg.header.stamp.sec*100
