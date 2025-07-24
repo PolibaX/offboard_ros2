@@ -24,10 +24,44 @@ class OffboardControl(Node):
         )
         
         self.namespace = 'matte'
-        self.world_frame = 'default'
-        self.odom_frame = "default" # self.namespace + '/odom'
+        self.world_frame = 'map'
+        self.odom_frame = self.namespace + "/odom" # self.namespace + '/odom'
         self.FRD_px4_odom_frame = self.namespace + '/FRD_px4_odom'
         self.baselink_frame = 'x500_depth_0/base_link'
+        
+        self.tf_static_broadcaster = StaticTransformBroadcaster(self)
+        
+        #publish static transform from map to odom (zero since simulation is perfect)
+        static_transform = TransformStamped()
+        static_transform.header.stamp = self.get_clock().now().to_msg()
+        static_transform.header.frame_id = self.world_frame
+        static_transform.child_frame_id = self.odom_frame
+        static_transform.transform.translation.x = 0.0
+        static_transform.transform.translation.y = 0.0
+        static_transform.transform.translation.z = 0.0
+        # Convert the rotation from FLU to FRD
+        tmp = R.from_euler('xyz', [0., 0., 0.]).as_quat()
+        static_transform.transform.rotation.x = tmp[0]
+        static_transform.transform.rotation.y = tmp[1]
+        static_transform.transform.rotation.z = tmp[2]
+        static_transform.transform.rotation.w = tmp[3]
+        self.tf_static_broadcaster.sendTransform(static_transform)
+        
+        # Publish a static transform from the baselink FLU to baselink FRD
+        static_transform = TransformStamped()
+        static_transform.header.stamp = self.get_clock().now().to_msg()
+        static_transform.header.frame_id = self.odom_frame
+        static_transform.child_frame_id = self.FRD_px4_odom_frame
+        static_transform.transform.translation.x = 0.0
+        static_transform.transform.translation.y = 0.0
+        static_transform.transform.translation.z = 0.0
+        # Convert the rotation from FLU to FRD
+        tmp = R.from_euler('xyz', [np.pi, 0., 0.]).as_quat()
+        static_transform.transform.rotation.x = tmp[0]
+        static_transform.transform.rotation.y = tmp[1]
+        static_transform.transform.rotation.z = tmp[2]
+        static_transform.transform.rotation.w = tmp[3]
+        self.tf_static_broadcaster.sendTransform(static_transform)
 
         # Create publishers
         self.VIO_publisher = self.create_publisher(
@@ -44,26 +78,9 @@ class OffboardControl(Node):
         self.pose_subscriber = self.create_subscription(PoseArray, '/gazebo/model/state', self.pose_callback, 10)
         self.vehicle_pose = VehicleOdometry()
         self.vehicle_pose.pose_frame = 2
-
+        
         # Create a timer to publish VIO data (VIO=Visual Inertial Odometry)
         self.timer = self.create_timer(1/100, self.timer_callback)
-        
-        self.tf_static_broadcaster = StaticTransformBroadcaster(self)
-        # Publish a static transform from the baselink FLU to baselink FRD
-        static_transform = TransformStamped()
-        static_transform.header.stamp = self.get_clock().now().to_msg()
-        static_transform.header.frame_id = self.odom_frame
-        static_transform.child_frame_id = self.FRD_px4_odom_frame
-        static_transform.transform.translation.x = 0.0
-        static_transform.transform.translation.y = 0.0
-        static_transform.transform.translation.z = 0.0
-        # Convert the rotation from FLU to FRD
-        tmp = R.from_euler('xyz', [np.pi, 0., 0.]).as_quat()
-        static_transform.transform.rotation.x = tmp[0]
-        static_transform.transform.rotation.y = tmp[1]
-        static_transform.transform.rotation.z = tmp[2]
-        static_transform.transform.rotation.w = tmp[3]
-        self.tf_static_broadcaster.sendTransform(static_transform)
     
     def pose_callback(self, pose_array):
         """Callback function for pose_array topic subscriber."""
@@ -76,15 +93,15 @@ class OffboardControl(Node):
         qy = pose_array.poses[i].orientation.y
         qz = pose_array.poses[i].orientation.z
         qw = pose_array.poses[i].orientation.w
-        # roll, pitch, yaw = R.from_quat([qx,qy,qz,qw]).as_euler('xyz')
+        roll, pitch, yaw = R.from_quat([qx,qy,qz,qw]).as_euler('xyz')
         # self.get_logger().info(f'Pose: x={x}, y={y}, z={z}, roll={roll}, pitch={pitch}, yaw={yaw}')
-        # # yaw = yaw - np.pi # subtract 90 degrees offset to yaw        # convert euler angles to quaternion
-        # qx, qy, qz, qw = R.from_euler('xyz', [roll, pitch, -yaw]).as_quat()
+        # yaw = yaw - np.pi # subtract 90 degrees offset to yaw        # convert euler angles to quaternion
+        qx, qy, qz, qw = R.from_euler('xyz', [roll, pitch, -yaw]).as_quat()
         self.vehicle_pose.position = [x, -y, -z]
         self.vehicle_pose.q = [qw, qx, qy, qz]
         
 
-    def publish_VIO_data(self, x, y, z):
+    def publish_VIO_data(self):
         """Publish VIO data to the FMU."""
         # msg = VehicleOdometry()
         # msg.position = [x, y, z]
@@ -106,7 +123,7 @@ class OffboardControl(Node):
         """Callback function for the timer."""
 
         # Publish VIO data
-        self.publish_VIO_data(9.0, 7.0, 0.0)
+        self.publish_VIO_data()
         
 
 
