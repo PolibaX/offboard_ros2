@@ -1,6 +1,6 @@
 ROS_DISTRO = jazzy
 
-CONTAINER_IMAGE := polibax:ros-$(ROS_DISTRO)-offboard
+CONTAINER_IMAGE := polibax/ros-offboard-common:$(ROS_DISTRO)
 CONTAINER_NAME := offboard_companion
 PERCENT := %
 ROOT_DIR := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
