@@ -18,19 +18,26 @@ class OffboardControl(Node):
 
     def __init__(self) -> None:
         super().__init__('offboard_control')
-        
+
+        self.declare_parameter("namespace", "matte")
+        self.declare_parameter('odom_frame', 'odom')
+        self.declare_parameter('px4_odom_frame', 'FRD_px4_odom')
+        self.declare_parameter('baselink_frame', 'x500_depth_0')
+        self.declare_parameter('map_frame', 'map')
+
         # Initialize variables
-        self.namespace = 'matte'
+        self.namespace = self.get_parameter('namespace').get_parameter_value().string_value
         self.odom_frame = f'{self.namespace}/odom'
         self.FRD_px4_odom_frame = f'{self.namespace}/FRD_px4_odom'
+        self.baselink_frame = self.get_parameter('baselink_frame').get_parameter_value().string_value
+        self.map_frame = self.get_parameter('map_frame').get_parameter_value().string_value
+
         """
             The baselink frame in simulation cannot be "x500_depth_0/base_link" 
             because the when doing the transform, the distance from footprint
             to the pixhawk would be considered. This means that a takeoff at
             1m would be a takeoff at 1m+<pixhawk-to-footprint-distance> (in this case +~0.23m).
         """
-        self.baselink_frame = 'x500_depth_0'  # Define the base frame for the vehicle odometry
-        self.map_frame = 'map'  # Define the global frame for the vehicle odometry
         self.offboard_setpoint_counter = 0
         self.vehicle_odometry = VehicleOdometry()
         self.vehicle_status = VehicleStatus()
@@ -115,7 +122,7 @@ class OffboardControl(Node):
                     request.z, 
                     request.yaw, 
                     request.frame_id, 
-                    target_frame_id=self.FRD_px4_odom_frame)
+                    target_frame_id=self.map_frame)
             except Exception as e:
                 self.get_logger().error(f"Error in TF lookup: {e}")
                 response.success = False
@@ -159,7 +166,7 @@ class OffboardControl(Node):
                 request.height, 
                 vehicle_yaw,
                 self.baselink_frame, 
-                target_frame_id=self.map_frame)
+                target_frame_id=self.FRD_px4_odom_frame)
             self.get_logger().warn(f"Takeoff to: {self.setpoint_x, self.setpoint_y, self.setpoint_z, self.setpoint_yaw}")
             self.do_takeoff = True
             response.success = True
@@ -234,7 +241,7 @@ class OffboardControl(Node):
 
     def timer_status_callback(self):
         """Callback function for the timer."""
-        self.get_logger().info(f"Vehicle State: {self.vehicle_status.arming_state}, Preflight Checks: {self.vehicle_status.pre_flight_checks_pass}, Nav State: {self.vehicle_status.nav_state}")
+        self.get_logger().info(f"Arming State: {self.vehicle_status.arming_state}, Preflight Checks: {self.vehicle_status.pre_flight_checks_pass}, Nav State: {self.vehicle_status.nav_state}")
 
     def publish_vehicle_command(self, command, **params) -> None:
         """Publish a vehicle command."""
@@ -308,7 +315,7 @@ class OffboardControl(Node):
         tmp.header.stamp = self.get_clock().now().to_msg()
         tmp.header.frame_id = self.FRD_px4_odom_frame
         self.goal_publisher.publish(tmp)
-        # self.get_logger().info(f"Publishing position setpoints {[self.setpoint_x, self.setpoint_y, self.setpoint_z]}"
+        # self.get_logger().info(f"Publishing position setpoints {[self.setpoint_x, self.setpoint_y, self.setpoint_z]}")
         
     def check_valid_target(self, x, y, z, yaw, frame_id):
         # try:
