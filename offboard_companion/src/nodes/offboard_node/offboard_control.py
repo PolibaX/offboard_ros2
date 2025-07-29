@@ -55,6 +55,13 @@ class OffboardControl(Node):
 
         self.do_takeoff = False # False sets the vehicle to land | True sets the vehicle to arm-offboard-takeoff to setpoint_z
         self.armed = False
+        self.flying = False
+
+        """
+            State machine flags:
+            - do_takeoff: If True, the vehicle will be able to arm and take off to the setpoint
+
+        """
         
         # Configure QoS profile for publishing and subscribing
         qos_profile = QoSProfile(
@@ -106,104 +113,126 @@ class OffboardControl(Node):
             PoseStamped, f'/{self.namespace}/offboard/goal', qos_profile)
 
     def moveto_callback(self, request, response):
-        valid_target = self.check_valid_target(request.x, request.y, request.z, request.yaw, request.frame_id)
-        """ request contains x, y, z, yaw and the frame_id of the setpoint to be reached """
-        if ((self.vehicle_status.nav_state == VehicleStatus.NAVIGATION_STATE_OFFBOARD and \
-           self.vehicle_status.arming_state == VehicleStatus.ARMING_STATE_ARMED) or self.enable_debug_topics) and \
-            valid_target:
-            # Transform the target position to the FRD_px4_odom_frame
-            try:
-                self.setpoint_x, \
-                self.setpoint_y, \
-                self.setpoint_z, \
-                self.setpoint_yaw = self.transform_setpoint(
-                    request.x, 
-                    request.y, 
-                    request.z, 
-                    request.yaw, 
-                    request.frame_id, 
-                    target_frame_id=self.map_frame)
-            except Exception as e:
-                self.get_logger().error(f"Error in TF lookup: {e}")
+        if self.flying:
+            valid_target = self.check_valid_target(request.x, request.y, request.z, request.yaw, request.frame_id)
+            """ request contains x, y, z, yaw and the frame_id of the setpoint to be reached """
+            if ((self.vehicle_status.nav_state == VehicleStatus.NAVIGATION_STATE_OFFBOARD and \
+            self.vehicle_status.arming_state == VehicleStatus.ARMING_STATE_ARMED) or self.enable_debug_topics) and \
+                valid_target:
+                # Transform the target position to the FRD_px4_odom_frame
+                try:
+                    self.setpoint_x, \
+                    self.setpoint_y, \
+                    self.setpoint_z, \
+                    self.setpoint_yaw = self.transform_setpoint(
+                        request.x, 
+                        request.y, 
+                        request.z, 
+                        request.yaw, 
+                        request.frame_id, 
+                        target_frame_id=self.FRD_px4_odom_frame)
+                except Exception as e:
+                    self.get_logger().error(f"Error in TF lookup: {e}")
+                    response.success = False
+                    return response
+                self.setpoint_frame_id = request.frame_id
+                response.success = True
+                self.get_logger().info(f"Moving to: {self.setpoint_x, self.setpoint_y, self.setpoint_z, self.setpoint_yaw}")
+            else:
+                if self.check_valid_target(request.x, request.y, request.z, request.yaw, request.frame_id):
+                    self.get_logger().info(f"Invalid target for moveto: {request.x, request.y, request.z, request.yaw, request.frame_id}")
                 response.success = False
-                return response
-            self.setpoint_frame_id = request.frame_id
-            response.success = True
-            self.get_logger().info(f"Moving to: {self.setpoint_x, self.setpoint_y, self.setpoint_z, self.setpoint_yaw}")
         else:
-            if self.check_valid_target(request.x, request.y, request.z, request.yaw, request.frame_id):
-                self.get_logger().info(f"Invalid target for moveto: {request.x, request.y, request.z, request.yaw, request.frame_id}")
+            self.get_logger().warn(f"Vehicle not in offboard mode or not armed: {self.vehicle_status.nav_state}, {self.vehicle_status.arming_state}")
             response.success = False
         return response
 
     def takeoff_callback(self, request, response):
         """Callback function for the takeoff service."""
-        vehicle_yaw = R.from_quat([
-                self.vehicle_odometry.q[0], 
-                self.vehicle_odometry.q[1], 
-                self.vehicle_odometry.q[2],
-                self.vehicle_odometry.q[3]
-                ]).as_euler('xyz')[2]
-        
-        valid_target = self.check_valid_target(
-            0., 
-            0., 
-            request.height,
-            vehicle_yaw,
-            frame_id=self.baselink_frame)
-        if ((self.vehicle_status.nav_state == VehicleStatus.NAVIGATION_STATE_OFFBOARD) or self.enable_debug_topics) and \
-            valid_target:
+        if (self.vehicle_status.nav_state == VehicleStatus.NAVIGATION_STATE_OFFBOARD) and \
+            not self.flying:
+            vehicle_yaw = R.from_quat([
+                    self.vehicle_odometry.q[0], 
+                    self.vehicle_odometry.q[1], 
+                    self.vehicle_odometry.q[2],
+                    self.vehicle_odometry.q[3]
+                    ]).as_euler('xyz')[2]
             
-            self.get_logger().warn("Arming and taking off")
-            self.arm()
-
-            self.setpoint_x, \
-            self.setpoint_y, \
-            self.setpoint_z, \
-            self.setpoint_yaw = self.transform_setpoint(
+            valid_target = self.check_valid_target(
                 0., 
                 0., 
-                request.height, 
+                request.height,
                 vehicle_yaw,
-                self.baselink_frame, 
-                target_frame_id=self.FRD_px4_odom_frame)
-            self.get_logger().warn(f"Takeoff to: {self.setpoint_x, self.setpoint_y, self.setpoint_z, self.setpoint_yaw}")
-            self.do_takeoff = True
-            response.success = True
-            self.offboard_setpoint_counter = 0
-        else:
-            if not valid_target:
-                self.get_logger().warn(f"Invalid target for takeoff: {self.vehicle_odometry.position[0], self.vehicle_odometry.position[1], request.height}")
+                frame_id=self.baselink_frame)
+            if valid_target:
+                
+                self.get_logger().warn("Arming and taking off")
+                self.arm()
+                
+                if not self.vehicle_status.arming_state == VehicleStatus.ARMING_STATE_ARMED and \
+                    self.vehicle_status.pre_flight_checks_pass and \
+                    self.vehicle_status.nav_state == VehicleStatus.NAVIGATION_STATE_OFFBOARD:
+
+                    self.setpoint_x, \
+                    self.setpoint_y, \
+                    self.setpoint_z, \
+                    self.setpoint_yaw = self.transform_setpoint(
+                        0., 
+                        0., 
+                        request.height, 
+                        vehicle_yaw,
+                        self.baselink_frame, 
+                        target_frame_id=self.FRD_px4_odom_frame)
+                    self.get_logger().warn(f"Takeoff to: {self.setpoint_x, self.setpoint_y, self.setpoint_z, self.setpoint_yaw}")
+                    self.flying = True
+                    response.success = True
+                else:
+                    self.get_logger().warn(f"Vehicle not armed or not in offboard mode: {self.vehicle_status.arming_state}, {self.vehicle_status.nav_state}")
+                    response.success = False
             else:
-                self.get_logger().warn(f"Vehicle not in offboard mode or not armed: {self.vehicle_status.nav_state}, {self.vehicle_status.arming_state}")
+                if not valid_target:
+                    self.get_logger().warn(f"Invalid target for takeoff: {self.vehicle_odometry.position[0], self.vehicle_odometry.position[1], request.height}")
+                else:
+                    self.get_logger().warn(f"Vehicle not in offboard mode or already armed: {self.vehicle_status.nav_state}, {self.vehicle_status.arming_state}")
+                response.success = False
+        else:
+            if self.flying:
+                self.get_logger().warn(f"Vehicle already flying: {self.vehicle_status.nav_state}, {self.flying}")
+            else:
+                self.get_logger().warn(f"Vehicle not in offboard mode. Nav state: {self.vehicle_status.nav_state}")
             response.success = False
         return response
 
     def land_callback(self, request, response):
         """Callback function for the takeoff service."""
-        vehicle_yaw = R.from_quat([
-                self.vehicle_odometry.q[0], 
-                self.vehicle_odometry.q[1], 
-                self.vehicle_odometry.q[2],
-                self.vehicle_odometry.q[3]
-                ]).as_euler('xyz')[2]
-        valid_target = self.check_valid_target(
-            self.vehicle_odometry.position[0], 
-            self.vehicle_odometry.position[1], 
-            0.,
-            vehicle_yaw,
-            frame_id=self.baselink_frame)
-        if valid_target:
-            self.setpoint_x = self.vehicle_odometry.position[0]
-            self.setpoint_y = self.vehicle_odometry.position[1]
-            self.setpoint_z = 0.
-            self.setpoint_yaw = vehicle_yaw
-            self.do_takeoff = False
-            self.get_logger().warn(f"Land to: {self.setpoint_x, self.setpoint_y, self.setpoint_z}")
-            response.success = True
-            self.land()
+        if (self.vehicle_status.nav_state == VehicleStatus.NAVIGATION_STATE_OFFBOARD) and \
+            self.flying:
+            vehicle_yaw = R.from_quat([
+                    self.vehicle_odometry.q[0], 
+                    self.vehicle_odometry.q[1], 
+                    self.vehicle_odometry.q[2],
+                    self.vehicle_odometry.q[3]
+                    ]).as_euler('xyz')[2]
+            valid_target = self.check_valid_target(
+                self.vehicle_odometry.position[0], 
+                self.vehicle_odometry.position[1], 
+                0.,
+                vehicle_yaw,
+                frame_id=self.baselink_frame)
+            if valid_target:
+                self.setpoint_x = self.vehicle_odometry.position[0]
+                self.setpoint_y = self.vehicle_odometry.position[1]
+                self.setpoint_z = 0.
+                self.setpoint_yaw = vehicle_yaw
+                self.do_takeoff = False
+                self.get_logger().warn(f"Land to: {self.setpoint_x, self.setpoint_y, self.setpoint_z}")
+                response.success = True
+                self.land()
+            else:
+                self.get_logger().info(f"Invalid target for landing: {self.vehicle_odometry.position[0], self.vehicle_odometry.position[1], 0.}")
+                response.success = False
         else:
-            self.get_logger().info(f"Invalid target for landing: {self.vehicle_odometry.position[0], self.vehicle_odometry.position[1], 0.}")
+            self.get_logger().warn(f"Vehicle not in offboard mode or not flying: {self.vehicle_status.nav_state}, {self.flying}")
             response.success = False
         return response
 
@@ -237,6 +266,16 @@ class OffboardControl(Node):
 
     def vehicle_status_callback(self, vehicle_status):
         """Callback function for vehicle_status topic subscriber."""
+        # detect change from armed to disarmed state
+        if self.vehicle_status.arming_state != vehicle_status.arming_state:
+            if vehicle_status.arming_state == VehicleStatus.ARMING_STATE_ARMED:
+                self.get_logger().info("Vehicle armed")
+                self.set_armed(True)
+            elif vehicle_status.arming_state == VehicleStatus.ARMING_STATE_DISARMED:
+                self.get_logger().info("Vehicle disarmed")
+                self.set_armed(False)
+                self.flying = False
+                self.do_takeoff = False
         self.vehicle_status = vehicle_status
 
     def timer_status_callback(self):
@@ -370,12 +409,13 @@ class OffboardControl(Node):
     def timer_callback(self) -> None:
         """Callback function for the timer."""
         self.publish_offboard_control_heartbeat_signal()
-        # if self.do_takeoff:
 
         if self.offboard_setpoint_counter == 10:
             self.engage_offboard_mode()
             # self.arm()
             self.get_logger().warn("Engaging offboard mode")
+            self.do_takeoff = True
+            self.get_logger().info("Takeoff is now available")
         
             
             
