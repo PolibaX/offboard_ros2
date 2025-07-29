@@ -116,9 +116,8 @@ class OffboardControl(Node):
         if self.flying:
             valid_target = self.check_valid_target(request.x, request.y, request.z, request.yaw, request.frame_id)
             """ request contains x, y, z, yaw and the frame_id of the setpoint to be reached """
-            if ((self.vehicle_status.nav_state == VehicleStatus.NAVIGATION_STATE_OFFBOARD and \
-            self.vehicle_status.arming_state == VehicleStatus.ARMING_STATE_ARMED) or self.enable_debug_topics) and \
-                valid_target:
+            if (self.vehicle_status.nav_state == VehicleStatus.NAVIGATION_STATE_OFFBOARD and \
+                self.armed) and valid_target:
                 # Transform the target position to the FRD_px4_odom_frame
                 try:
                     self.setpoint_x, \
@@ -139,8 +138,10 @@ class OffboardControl(Node):
                 response.success = True
                 self.get_logger().info(f"Moving to: {self.setpoint_x, self.setpoint_y, self.setpoint_z, self.setpoint_yaw}")
             else:
-                if self.check_valid_target(request.x, request.y, request.z, request.yaw, request.frame_id):
+                if not valid_target:
                     self.get_logger().info(f"Invalid target for moveto: {request.x, request.y, request.z, request.yaw, request.frame_id}")
+                else:
+                    self.get_logger().warn(f"Vehicle not in offboard mode or not armed: {self.vehicle_status.nav_state}, {self.vehicle_status.arming_state}")
                 response.success = False
         else:
             self.get_logger().warn(f"Vehicle not in offboard mode or not armed: {self.vehicle_status.nav_state}, {self.vehicle_status.arming_state}")
@@ -393,7 +394,7 @@ class OffboardControl(Node):
         # Convert quaternion to rotation matrix
         rotation_matrix = R.from_quat([rotation.x, rotation.y, rotation.z, rotation.w]).as_matrix()
         # Apply the rotation and translation to the setpoint
-        new_rot = rotation_matrix * R.from_quat(setpoint[3:]).as_matrix()
+        new_rot = rotation_matrix @ R.from_quat(setpoint[3:]).as_matrix()
         new_trans = np.dot(rotation_matrix, setpoint[:3]) + np.array([
             translation.x, 
             translation.y, 
