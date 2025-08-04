@@ -8,7 +8,7 @@ echo "Using workspace path: $WS_PATH"
 source /root/.bashrc
 
 # Setup ROS environment
-source /opt/ros/humble/setup.bash
+source /opt/ros/jazzy/setup.bash
 
 # Change to workspace directory
 cd $WS_PATH
@@ -17,7 +17,7 @@ cd $WS_PATH
 colcon build
 
 # Source the workspace setup
-source $WS_PATH/install/setup.bash
+source $WS_PATH/install/local_setup.bash
 
 # Launch the offboard relay
-ros2 launch offboard_companion offboard_relay.launch.py
+ros2 launch offboard_companion offboard_relay_sim.launch.py
