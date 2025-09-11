@@ -46,10 +46,10 @@ class OffboardControl(Node):
         self.setpoint_z = 0.
         self.setpoint_yaw = 0.0
         
-        self.min_x = -2.
-        self.max_x = 18.
-        self.min_y = -2.
-        self.max_y = 18.
+        self.min_x = 0.
+        self.max_x = 20.
+        self.min_y = 0.
+        self.max_y = 10.
         self.min_z = -0.01
         self.max_z = 3.
 
