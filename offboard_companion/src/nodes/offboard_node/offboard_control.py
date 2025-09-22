@@ -216,7 +216,7 @@ class OffboardControl(Node):
                     ]).as_euler('xyz')[2]
             valid_target = self.check_valid_target(
                 self.vehicle_odometry.position[0], 
-                self.vehicle_odometry.position[1], 
+                -self.vehicle_odometry.position[1], 
                 0.,
                 vehicle_yaw,
                 frame_id=self.baselink_frame)
