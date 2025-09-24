@@ -39,7 +39,7 @@ class OffboardControl(Node):
             1m would be a takeoff at 1m+<pixhawk-to-footprint-distance> (in this case +~0.23m).
         """
         self.offboard_setpoint_counter = 0
-        self.vehicle_odometry = VehicleOdometry()
+        self.vehicle_odometry = None #VehicleOdometry()
         self.vehicle_status = VehicleStatus()
         self.setpoint_x = 0.
         self.setpoint_y = 0.
@@ -98,12 +98,12 @@ class OffboardControl(Node):
             PoseStamped, f'/{self.namespace}/offboard/pose_error', qos_profile)
 
         # Create a timer to publish control commands
-        self.timer = self.create_timer(0.1, self.timer_callback)
+        self.timer = self.create_timer(0.02, self.timer_callback)
         self.timer_status = self.create_timer(1., self.timer_status_callback)
 
         self.takeoff_srv = self.create_service(Takeoff, f'/{self.namespace}/offboard/takeoff', self.takeoff_callback)
         self.land_srv = self.create_service(Land, f'/{self.namespace}/offboard/land', self.land_callback)
-        self.land_srv = self.create_service(MoveTo, f'/{self.namespace}/offboard/moveto', self.moveto_callback)
+        self.moveto_srv = self.create_service(MoveTo, f'/{self.namespace}/offboard/moveto', self.moveto_callback)
 
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
@@ -164,7 +164,7 @@ class OffboardControl(Node):
                 0., 
                 request.height,
                 vehicle_yaw,
-                frame_id=self.baselink_frame)
+                frame_id=self.map_frame)
             if valid_target:
                 
                 self.get_logger().warn("Arming and taking off")
@@ -219,7 +219,7 @@ class OffboardControl(Node):
                 -self.vehicle_odometry.position[1], 
                 0.,
                 vehicle_yaw,
-                frame_id=self.baselink_frame)
+                frame_id=self.map_frame)
             if valid_target:
                 self.setpoint_x = self.vehicle_odometry.position[0]
                 self.setpoint_y = self.vehicle_odometry.position[1]
@@ -243,6 +243,18 @@ class OffboardControl(Node):
         msg.pose.position.x = float( self.setpoint_x - self.vehicle_odometry.position[0] )
         msg.pose.position.y = float( self.setpoint_y - self.vehicle_odometry.position[1] )
         msg.pose.position.z = float( self.setpoint_z - self.vehicle_odometry.position[2] )
+        yaw_err = self.setpoint_yaw - R.from_quat([
+                self.vehicle_odometry.q[0], 
+                self.vehicle_odometry.q[1], 
+                self.vehicle_odometry.q[2],
+                self.vehicle_odometry.q[3]
+                ]).as_euler('xyz')[2]
+        # normalize yaw error to [-pi, pi]
+        yaw_err = (yaw_err + np.pi) % (2 * np.pi) - np.pi
+        msg.pose.orientation.x = 0.
+        msg.pose.orientation.y = 0.
+        msg.pose.orientation.z = np.sin(yaw_err/2)
+        msg.pose.orientation.w = np.cos(yaw_err/2)
         self.target_error_publisher.publish(msg)
 
     # def target_pose_callback(self, msg):
@@ -421,8 +433,8 @@ class OffboardControl(Node):
             
             
         self.publish_position_setpoint()
-        self.publish_target_error()
-            
+        if self.vehicle_odometry is not None:
+            self.publish_target_error()
 
         if self.offboard_setpoint_counter < 11:
             self.offboard_setpoint_counter += 1
