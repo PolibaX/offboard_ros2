@@ -22,12 +22,18 @@ class OffboardControl(Node):
             history=HistoryPolicy.KEEP_LAST,
             depth=2
         )
+
+        self.declare_parameter("namespace", "matte")
+        self.declare_parameter('odom_frame', 'odom')
+        self.declare_parameter('px4_odom_frame', 'FRD_px4_odom')
+        self.declare_parameter('baselink_frame', 'x500_depth_0/base_link')
+        self.declare_parameter('map_frame', 'map')
         
-        self.namespace = 'matte'
-        self.world_frame = 'map'
-        self.odom_frame = self.namespace + "/odom" # self.namespace + '/odom'
-        self.FRD_px4_odom_frame = self.namespace + '/FRD_px4_odom'
-        self.baselink_frame = 'x500_depth_0/base_link'
+        self.namespace = self.get_parameter('namespace').get_parameter_value().string_value
+        self.world_frame = self.get_parameter('map_frame').get_parameter_value().string_value
+        self.odom_frame = self.namespace + self.get_parameter('odom_frame').get_parameter_value().string_value
+        self.FRD_px4_odom_frame = self.namespace + self.get_parameter('px4_odom_frame').get_parameter_value().string_value
+        self.baselink_frame = self.get_parameter('baselink_frame').get_parameter_value().string_value
         
         self.tf_static_broadcaster = StaticTransformBroadcaster(self)
         

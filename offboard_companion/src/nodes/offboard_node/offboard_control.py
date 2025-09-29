@@ -22,14 +22,14 @@ class OffboardControl(Node):
         self.declare_parameter("namespace", "matte")
         self.declare_parameter('odom_frame', 'odom')
         self.declare_parameter('px4_odom_frame', 'FRD_px4_odom')
-        self.declare_parameter('baselink_frame', 'x500_depth_0')
+        self.declare_parameter('baselink_frame', 'base_link')
         self.declare_parameter('map_frame', 'map')
 
         # Initialize variables
         self.namespace = self.get_parameter('namespace').get_parameter_value().string_value
-        self.odom_frame = f'{self.namespace}/odom'
-        self.FRD_px4_odom_frame = f'{self.namespace}/FRD_px4_odom'
-        self.baselink_frame = self.get_parameter('baselink_frame').get_parameter_value().string_value
+        self.odom_frame = f'{self.namespace}/{self.get_parameter('odom_frame').get_parameter_value().string_value}'
+        self.FRD_px4_odom_frame = f'{self.namespace}/{self.get_parameter('odom_frame').get_parameter_value().string_value}'
+        self.baselink_frame = f'{self.namespace}/{self.get_parameter('baselink_frame').get_parameter_value().string_value}'
         self.map_frame = self.get_parameter('map_frame').get_parameter_value().string_value
 
         """

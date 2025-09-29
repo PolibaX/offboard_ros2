@@ -33,6 +33,11 @@ def generate_launch_description():
             # {"points_in": LaunchConfiguration('points_in')},
             # {"odom_in": LaunchConfiguration('odom_in')},
             # {"verbose": LaunchConfiguration('verbose')},
+            {'namespace': 'matte'},
+            {'odom_frame': 'odom'},
+            {'px4_odom_frame': 'FRD_px4_odom'},
+            {'baselink_frame': 'x500_depth_0/base_link'},
+            {'map_frame': 'map'}
         ],
     )
 
@@ -49,6 +54,11 @@ def generate_launch_description():
             # {"points_in": LaunchConfiguration('points_in')},
             # {"odom_in": LaunchConfiguration('odom_in')},
             # {"verbose": LaunchConfiguration('verbose')},
+            {'namespace': 'matte'},
+            {'odom_frame': 'odom'},
+            {'px4_odom_frame': 'FRD_px4_odom'},
+            {'baselink_frame': 'x500_depth_0/base_link'},
+            {'map_frame': 'map'}
         ],
     )
     
