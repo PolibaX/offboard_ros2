@@ -28,7 +28,7 @@ class OffboardControl(Node):
         # Initialize variables
         self.namespace = self.get_parameter('namespace').get_parameter_value().string_value
         self.odom_frame = f'{self.namespace}/{self.get_parameter("odom_frame").get_parameter_value().string_value}'
-        self.FRD_px4_odom_frame = f'{self.namespace}/{self.get_parameter("odom_frame").get_parameter_value().string_value}'
+        self.FRD_px4_odom_frame = f'{self.namespace}/{self.get_parameter("px4_odom_frame").get_parameter_value().string_value}'
         self.baselink_frame = f'{self.namespace}/{self.get_parameter("baselink_frame").get_parameter_value().string_value}'
         self.map_frame = self.get_parameter('map_frame').get_parameter_value().string_value
 
@@ -76,7 +76,7 @@ class OffboardControl(Node):
             OffboardControlMode, f'/{self.namespace}/fmu/in/offboard_control_mode', qos_profile)
             # OffboardControlMode, '/fmu/in/offboard_control_mode', qos_profile)
         self.trajectory_setpoint_publisher = self.create_publisher(
-            TrajectorySetpoint, f'/{self.namespace}/fmu/in/trajectory_setpoint', qos_profile)
+            TrajectorySetpoint, f'/{self.namespace}/potito', qos_profile)
             # TrajectorySetpoint, '/fmu/in/trajectory_setpoint', qos_profile)
         self.vehicle_command_publisher = self.create_publisher(
             VehicleCommand, f'/{self.namespace}/fmu/in/vehicle_command', qos_profile)
