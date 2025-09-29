@@ -27,13 +27,13 @@ class OffboardControl(Node):
 
         # Initialize variables
         self.namespace = self.get_parameter('namespace').get_parameter_value().string_value
-        self.odom_frame = f'{self.namespace}/{self.get_parameter('odom_frame').get_parameter_value().string_value}'
-        self.FRD_px4_odom_frame = f'{self.namespace}/{self.get_parameter('odom_frame').get_parameter_value().string_value}'
-        self.baselink_frame = f'{self.namespace}/{self.get_parameter('baselink_frame').get_parameter_value().string_value}'
+        self.odom_frame = f'{self.namespace}/{self.get_parameter("odom_frame").get_parameter_value().string_value}'
+        self.FRD_px4_odom_frame = f'{self.namespace}/{self.get_parameter("odom_frame").get_parameter_value().string_value}'
+        self.baselink_frame = f'{self.namespace}/{self.get_parameter("baselink_frame").get_parameter_value().string_value}'
         self.map_frame = self.get_parameter('map_frame').get_parameter_value().string_value
 
         """
-            The baselink frame in simulation cannot be "x500_depth_0/base_link" 
+            The baselink frame in simulation cannot be "matte/base_link" 
             because the when doing the transform, the distance from footprint
             to the pixhawk would be considered. This means that a takeoff at
             1m would be a takeoff at 1m+<pixhawk-to-footprint-distance> (in this case +~0.23m).
@@ -133,7 +133,7 @@ class OffboardControl(Node):
                 except Exception as e:
                     self.get_logger().error(f"Error in TF lookup: {e}")
                     response.success = False
-                    return response
+                    # return response
                 self.setpoint_frame_id = request.frame_id
                 response.success = True
                 self.get_logger().info(f"Moving to: {self.setpoint_x, self.setpoint_y, self.setpoint_z, self.setpoint_yaw}")
@@ -178,8 +178,8 @@ class OffboardControl(Node):
                     self.setpoint_y, \
                     self.setpoint_z, \
                     self.setpoint_yaw = self.transform_setpoint(
-                        0., 
-                        0., 
+                        self.vehicle_odometry.position[0], 
+                        -self.vehicle_odometry.position[1], 
                         request.height, 
                         vehicle_yaw,
                         self.baselink_frame, 

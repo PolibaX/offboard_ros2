@@ -8,6 +8,7 @@ from geometry_msgs.msg import PoseStamped
 from scipy.spatial.transform import Rotation as R
 import numpy as np
 from tf2_ros import TransformListener, Buffer, StaticTransformBroadcaster, TransformStamped
+import tf2_geometry_msgs
 
 
 class OffboardControl(Node):
@@ -24,7 +25,7 @@ class OffboardControl(Node):
             depth=1
         )
         
-        self.namespace = 'chotto'
+        self.namespace = 'matte'
 
         # Create publishers
         self.VIO_publisher = self.create_publisher(
@@ -34,11 +35,12 @@ class OffboardControl(Node):
         self.vehicle_status_subscriber = self.create_subscription(
             VehicleStatus, f'/{self.namespace}/fmu/out/vehicle_status', self.vehicle_status_callback, qos_profile)
 
-        self.FRD_px4_odom_frame = f'{self.namespace}/odom_px4_FRD'
+        self.FRD_px4_odom_frame = f'{self.namespace}/FRD_px4_odom'
         self.odom_frame = f'{self.namespace}/odom'  # Define the global frame for the vehicle odometry
         self.base_frame = f'{self.namespace}/base_link'  # Define the base frame for the vehicle odometry
-        # self.tf_buffer = Buffer()
-        # self.tf_listener = TransformListener(self.tf_buffer, self)
+        self.map_frame = 'map'
+        self.tf_buffer = Buffer()
+        self.tf_listener = TransformListener(self.tf_buffer, self)
         # self.tf_timer = self.create_timer(1/51, self.tf_timer_callback)
 
         self.zed_sub = self.create_subscription(PoseStamped, f'/{self.namespace}/pose', self.zed_callback, 3)
@@ -96,15 +98,26 @@ class OffboardControl(Node):
     def zed_callback(self, msg):
         # self.FRD_pose.timestamp = msg.header.stamp.sec*100
         # convert the vicon data to FRD frame
+        global_pose = PoseStamped()
+        global_pose = msg
+        # try:
+        #     global_pose = self.tf_buffer.transform(msg, "map")
+        # except Exception as e:
+        #     self.get_logger().error(f"Error in TF transform: {e}")
+        #     return
 
         # Choose your conversion (depending on the zed camera convention)
-        self.FRD_pose.position = [msg.pose.position.x, -msg.pose.position.y, -msg.pose.position.z] # from FLU to FRD
+        self.FRD_pose.position = [
+             global_pose.pose.position.x, 
+            -global_pose.pose.position.y, 
+            -global_pose.pose.position.z] # from FLU to FRD
         # self.FRD_pose.position = [msg.pose.position.y, msg.pose.position.x, -msg.pose.position.z] # from RFU to FRD
         # convert vicon quaternion to euler angles
-        roll, pitch, yaw = R.from_quat([msg.pose.orientation.x, \
-                                        msg.pose.orientation.y, \
-                                        msg.pose.orientation.z, \
-                                        msg.pose.orientation.w]).as_euler('xyz')
+        roll, pitch, yaw = R.from_quat([
+            global_pose.pose.orientation.x, \
+            global_pose.pose.orientation.y, \
+            global_pose.pose.orientation.z, \
+            global_pose.pose.orientation.w]).as_euler('xyz')
         yaw_FRD = -yaw #- np.pi/2# from RFU to FRD
         # convert euler angles to quaternion
         qx, qy, qz, qw = R.from_euler('xyz', [roll, pitch, yaw_FRD]).as_quat()

@@ -5,7 +5,7 @@ CONTAINER_NAME := offboard_companion
 PERCENT := %
 ROOT_DIR := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 WORK_DIR := /root/ws_offboard
-ROS_DOMAIN_ID := 33
+ROS_DOMAIN_ID := 0
 
 default: run
 
