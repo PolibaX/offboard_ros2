@@ -290,6 +290,8 @@ class OffboardControl(Node):
                 self.set_armed(False)   
                 self.flying = False
                 self.do_takeoff = False
+                if (self.vehicle_status.nav_state == VehicleStatus.NAVIGATION_STATE_AUTO_LAND):
+                    self.offboard_setpoint_counter = 0
         if vehicle_status.arming_state == VehicleStatus.ARMING_STATE_DISARMED:
             self.offboardable = True
         self.vehicle_status = vehicle_status
@@ -441,10 +443,10 @@ class OffboardControl(Node):
 
         if self.offboard_setpoint_counter < 11:
             self.offboard_setpoint_counter += 1
-        if  (self.vehicle_status.nav_state == VehicleStatus.NAVIGATION_STATE_AUTO_LAND) and \
-            self.offboard_setpoint_counter > 0:
-            self.offboard_setpoint_counter = 0
-            self.get_logger().warn("Resetting offboard setpoint counter")
+        # if  (self.vehicle_status.nav_state == VehicleStatus.NAVIGATION_STATE_AUTO_LAND) and \
+        #     self.offboard_setpoint_counter > 0:
+        #     self.offboard_setpoint_counter = 0
+        #     self.get_logger().warn("Resetting offboard setpoint counter")
 
 def main(args=None) -> None:
     print('Starting offboard control node...')
