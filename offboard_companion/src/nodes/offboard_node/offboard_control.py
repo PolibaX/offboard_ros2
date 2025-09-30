@@ -76,8 +76,7 @@ class OffboardControl(Node):
             OffboardControlMode, f'/{self.namespace}/fmu/in/offboard_control_mode', qos_profile)
             # OffboardControlMode, '/fmu/in/offboard_control_mode', qos_profile)
         self.trajectory_setpoint_publisher = self.create_publisher(
-            TrajectorySetpoint, f'/{self.namespace}/potito', qos_profile)
-            # TrajectorySetpoint, '/fmu/in/trajectory_setpoint', qos_profile)
+            TrajectorySetpoint, f'/{self.namespace}/fmu/in/trajectory_setpoint', qos_profile)
         self.vehicle_command_publisher = self.create_publisher(
             VehicleCommand, f'/{self.namespace}/fmu/in/vehicle_command', qos_profile)
             # VehicleCommand, '/fmu/in/vehicle_command', qos_profile)
@@ -221,8 +220,8 @@ class OffboardControl(Node):
                 vehicle_yaw,
                 frame_id=self.map_frame)
             if valid_target:
-                self.setpoint_x = self.vehicle_odometry.position[0]
-                self.setpoint_y = self.vehicle_odometry.position[1]
+                self.setpoint_x = float(self.vehicle_odometry.position[0])
+                self.setpoint_y = float(self.vehicle_odometry.position[1])
                 self.setpoint_z = 0.
                 self.setpoint_yaw = vehicle_yaw
                 self.do_takeoff = False
