@@ -35,7 +35,7 @@ def generate_launch_description():
             {'namespace': 'matte'},
             {'odom_frame': 'odom'},
             {'px4_odom_frame': 'FRD_px4_odom'},
-            {'baselink_frame': 'x500_depth_0/base_link'},
+            {'baselink_frame': 'base_link'},
             {'map_frame': 'map'}
         ],
     )

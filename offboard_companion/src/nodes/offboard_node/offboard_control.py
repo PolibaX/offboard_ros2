@@ -56,6 +56,7 @@ class OffboardControl(Node):
         self.do_takeoff = False # False sets the vehicle to land | True sets the vehicle to arm-offboard-takeoff to setpoint_z
         self.armed = False
         self.flying = False
+        self.offboardable = True
 
         """
             State machine flags:
@@ -159,11 +160,11 @@ class OffboardControl(Node):
                     ]).as_euler('xyz')[2]
             
             valid_target = self.check_valid_target(
-                0., 
-                0., 
-                request.height,
+                self.vehicle_odometry.position[0], 
+                self.vehicle_odometry.position[1], 
+                -request.height,
                 vehicle_yaw,
-                frame_id=self.map_frame)
+                frame_id=self.FRD_px4_odom_frame)
             if valid_target:
                 
                 self.get_logger().warn("Arming and taking off")
@@ -215,18 +216,19 @@ class OffboardControl(Node):
                     ]).as_euler('xyz')[2]
             valid_target = self.check_valid_target(
                 self.vehicle_odometry.position[0], 
-                -self.vehicle_odometry.position[1], 
+                self.vehicle_odometry.position[1], 
                 0.,
                 vehicle_yaw,
-                frame_id=self.map_frame)
+                frame_id=self.FRD_px4_odom_frame)
             if valid_target:
                 self.setpoint_x = float(self.vehicle_odometry.position[0])
                 self.setpoint_y = float(self.vehicle_odometry.position[1])
                 self.setpoint_z = 0.
-                self.setpoint_yaw = vehicle_yaw
+                self.setpoint_yaw = float(vehicle_yaw)
                 self.do_takeoff = False
                 self.get_logger().warn(f"Land to: {self.setpoint_x, self.setpoint_y, self.setpoint_z}")
                 response.success = True
+                self.offboardable = False
                 self.land()
             else:
                 self.get_logger().info(f"Invalid target for landing: {self.vehicle_odometry.position[0], self.vehicle_odometry.position[1], 0.}")
@@ -285,9 +287,11 @@ class OffboardControl(Node):
                 self.set_armed(True)
             elif vehicle_status.arming_state == VehicleStatus.ARMING_STATE_DISARMED:
                 self.get_logger().info("Vehicle disarmed")
-                self.set_armed(False)
+                self.set_armed(False)   
                 self.flying = False
                 self.do_takeoff = False
+        if vehicle_status.arming_state == VehicleStatus.ARMING_STATE_DISARMED:
+            self.offboardable = True
         self.vehicle_status = vehicle_status
 
     def timer_status_callback(self):
@@ -422,7 +426,7 @@ class OffboardControl(Node):
         """Callback function for the timer."""
         self.publish_offboard_control_heartbeat_signal()
 
-        if self.offboard_setpoint_counter == 10:
+        if self.offboard_setpoint_counter == 10 and self.offboardable:
             self.engage_offboard_mode()
             # self.arm()
             self.get_logger().warn("Engaging offboard mode")
